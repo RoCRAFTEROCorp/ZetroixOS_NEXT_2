@@ -15,6 +15,7 @@ list(APPEND SOURCE
     LoadAppInitDlls.c
     ComPlusPackageInstallStatus.c
     IntegratedDisplaySize.c
+    Mailslot.c
     MessageWaitingIndicator.c
     TermsrvAppInstallMode.c
     ConsoleAlias.c
@@ -28,6 +29,7 @@ list(APPEND SOURCE
     BackupReadWrite.c
     CalendarDateTime.c
     CallbackCallingConventions.c
+    CdfsVolume.c
     CallbackMayRunLong.c
     Arm64ThreadContext.c
     ConsoleCommandHistory.c
@@ -114,6 +116,7 @@ list(APPEND SOURCE
     ProcessMitigationPolicy.c
     QuantumRoundRobin.c
     RegisterWaitPeriodic.c
+    SataDiskAddress.c
     SandboxLaunch.c
     SecurityBaseApis.c
     SystemImageCatalog.c
@@ -130,7 +133,6 @@ list(APPEND SOURCE
     LocaleNameToLCID.c
     lstrcpynW.c
     lstrlen.c
-    Mailslot.c
     MaximumProcessorCount.c
     MuiResources.c
     MultiByteToWideChar.c

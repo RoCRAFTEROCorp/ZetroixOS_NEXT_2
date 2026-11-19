@@ -21,6 +21,9 @@ extern void func_BackupReadWrite(void);
 extern void func_CalendarDateTime(void);
 extern void func_CallbackCallingConventions(void);
 extern void func_CallbackMayRunLong(void);
+extern void func_CdfsVolume(void);
+extern void func_SataDiskAddress(void);
+extern void func_Mailslot(void);
 extern void func_Arm64ThreadContext(void);
 extern void func_ConsoleAlias(void);
 extern void func_ConsoleCharInput(void);
@@ -122,7 +125,6 @@ extern void func_PosixRename(void);
 extern void func_LocaleNameToLCID(void);
 extern void func_lstrcpynW(void);
 extern void func_lstrlen(void);
-extern void func_MailslotRead(void);
 extern void func_MaximumProcessorCount(void);
 extern void func_MuiResources(void);
 extern void func_MultiByteToWideChar(void);
@@ -244,6 +246,9 @@ const struct test winetest_testlist[] =
     { "CalendarDateTime",            func_CalendarDateTime },
     { "CallbackCallingConventions", func_CallbackCallingConventions },
     { "CallbackMayRunLong",          func_CallbackMayRunLong },
+    { "CdfsVolume", func_CdfsVolume },
+    { "SataDiskAddress", func_SataDiskAddress },
+    { "Mailslot", func_Mailslot },
     { "Arm64ThreadContext",          func_Arm64ThreadContext },
     { "ConsoleAlias", func_ConsoleAlias },
     { "ConsoleCharInput",            func_ConsoleCharInput },
@@ -345,7 +350,6 @@ const struct test winetest_testlist[] =
     { "LocaleNameToLCID",            func_LocaleNameToLCID },
     { "lstrcpynW",                   func_lstrcpynW },
     { "lstrlen",                     func_lstrlen },
-    { "MailslotRead",                func_MailslotRead },
     { "MaximumProcessorCount",       func_MaximumProcessorCount },
     { "MuiResources",                func_MuiResources },
     { "MultiByteToWideChar",         func_MultiByteToWideChar },
