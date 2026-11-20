@@ -456,6 +456,14 @@ XhciInitialize(
         return STATUS_NOT_SUPPORTED;
     }
 
+    if (!(Capabilities & XHCI_HCC_AC64) &&
+        (ULONG64)Adapter->KdNet->Device->Memory.Start.QuadPart + Adapter->KdNet->Device->Memory.Length > 0x100000000ULL)
+    {
+        UsbNetTrace("USB debugger: the controller addresses 32 bits and the debugger memory at %I64x is above 4 GB\n",
+                    (ULONG64)Adapter->KdNet->Device->Memory.Start.QuadPart);
+        return STATUS_NOT_SUPPORTED;
+    }
+
     XhciTakeOwnership(Adapter, Capabilities);
     Status = XhciReset(Adapter);
     if (!NT_SUCCESS(Status))
@@ -656,6 +664,7 @@ XhciShareController(
 
     Share->Dcbaa = XhciPhysical(Adapter->Dcbaa);
     Share->ScratchpadArray = Adapter->Dcbaa[0];
+    Share->Registers = XhciPhysical(Adapter->Registers);
     Adapter->Shared = TRUE;
     Adapter->KdNet->Device->OemData = Share;
     Adapter->KdNet->Device->OemDataLength = sizeof(*Share);
