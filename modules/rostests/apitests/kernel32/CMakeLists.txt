@@ -8,6 +8,7 @@ add_subdirectory(werhandler)
 add_message_headers(ANSI FormatMessage.mc)
 
 list(APPEND SOURCE
+    ApiSetHosts.c
     FileSecurityCache.c
     ActCtxDependencyVersions.c
     AlternateComputerNames.c
@@ -58,7 +59,9 @@ list(APPEND SOURCE
     DispatcherStress.c
     ProcessorGroups.c
     dosdev.c
+    DirectoryEntryUpdates.c
     DateTimeFormatFlags.c
+    WriteProcessMemoryAccess.c
     EnumDateTimeFormats.c
     EnumSystemCodePages.c
     FindActCtxSectionStringW.c
