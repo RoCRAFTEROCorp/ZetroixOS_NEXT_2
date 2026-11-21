@@ -271,6 +271,7 @@ struct _BTreeKey
 };
 
 /* Private macros */
+#define NTFS_METADATA_BLOCK_SIZE 4096u
 #define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
 
 #define FileRef(Key) ((Key)->Entry->Data.Directory.IndexedFile)
@@ -809,9 +810,8 @@ public:
      * @return
      * STATUS_SUCCESS if successful.
      */
-    NTSTATUS WriteVolume(_In_    ULONGLONG Offset,
-                         _In_    ULONG Length,
-                         _Inout_ PUCHAR Buffer);
+    NTSTATUS WriteVolume(_In_ ULONGLONG Offset, _In_ ULONG Length, _Inout_ PUCHAR Buffer,
+                         _In_ NTFS_WRITE_VOLUME_ROUTINE *Write = NtfsWriteVolumeContext);
 
     NTSTATUS FlushVolume();
 
@@ -947,6 +947,10 @@ NtfsFileNameEaSize(_In_ const FileNameEx *FileName)
         return 0;
     return (ULONG)FileName->Extended.EAInfo.PackedEASize + FileName->Extended.EAInfo.Padding;
 }
+
+BOOLEAN
+ValidateSecurityDescriptor(_In_ const UCHAR* Descriptor,
+                           _In_ ULONG DescriptorLength);
 
 typedef class FileRecord
 {
@@ -1084,7 +1088,8 @@ public:
     NTSTATUS
     SetFileDataSize(_In_ AttributeType AttrType,
                     _In_opt_ PWSTR StreamName,
-                    _In_ ULONGLONG NewSize);
+                    _In_ ULONGLONG NewSize,
+                    _In_ ULONGLONG AllocationFloor = 0);
 
     NTSTATUS SetFileValidDataLength(_In_ AttributeType AttrType, _In_opt_ PWSTR StreamName, _In_ ULONGLONG NewValidDataLength);
 
@@ -1139,6 +1144,10 @@ public:
         _Inout_ PULONG StreamCount);
 
     NTSTATUS
+    WriteResident(_In_ PUCHAR Buffer, _In_ ULONG Length, _In_ ULONGLONG Offset,
+                  _In_ NTFS_TRANSFER_RESIDENT_WRITE *Transfer, _In_ void *Context, _Out_ PBOOLEAN Handled);
+
+    NTSTATUS
     UpdateResidentData(_In_ PAttribute TargetAttribute,
                        _In_ PUCHAR Buffer,
                        _In_ PULONG Length,
@@ -1161,8 +1170,7 @@ public:
     GetAllocationSignature();
 
     NTSTATUS
-    GetRecordDiskRange(_Out_ PULONGLONG Offset,
-                       _Out_ PULONG Length);
+    GetRecordDiskRange(_Out_ PULONGLONG Offset, _Out_ PULONG Length, _In_opt_ PAttribute Target = NULL);
 
 private:
     friend class Directory;
@@ -1282,7 +1290,9 @@ private:
         _In_ ULONG NameLength,
         _In_ BOOLEAN IsDirectory,
         _In_ ULONG FileAttributes,
-        _Out_ PFileNameEx* CreatedName);
+        _Out_ PFileNameEx* CreatedName,
+        _In_opt_ const UCHAR* SecurityDescriptor = NULL,
+        _In_ ULONG SecurityDescriptorLength = 0);
 
     NTSTATUS
     ReplaceListedExtendedAttributes(
@@ -1422,7 +1432,8 @@ private:
                         _In_ ULONG Length,
                         _In_ ULONGLONG Offset,
                         _In_ ULONGLONG NewDataSize,
-                        _In_ ULONGLONG RequestedAllocationSize);
+                        _In_ ULONGLONG RequestedAllocationSize,
+                        _In_opt_ NTFS_TRANSFER_RESIDENT_WRITE *Transfer = NULL, _In_opt_ void *Context = NULL);
 
     NTSTATUS
     ExtendNonResidentData(_In_ PAttribute TargetAttribute,
@@ -1430,9 +1441,6 @@ private:
                           _In_ ULONG Length,
                           _In_ ULONGLONG Offset);
 
-    NTSTATUS
-    ResizeNonResidentData(_In_ PAttribute TargetAttribute,
-                          _In_ ULONGLONG NewDataSize);
 
     NTSTATUS
     ResizeSparseData(_In_ PAttribute TargetAttribute,
@@ -1850,6 +1858,9 @@ public:
     WriteFileRecordToMFT(_In_ PFileRecord File);
 
     NTSTATUS
+    FindAllocationCandidate(_Out_ PULONGLONG Number);
+
+    NTSTATUS
     GetFileRecordDiskOffset(_In_ ULONGLONG RecordNumber,
                             _Out_ PULONGLONG DiskOffset);
 
@@ -1908,7 +1919,9 @@ public:
         _In_ ULONG FileAttributes,
         _Out_ PFileRecord* File,
         _In_opt_ PCWSTR ShortName = NULL,
-        _In_ ULONG ShortNameLength = 0);
+        _In_ ULONG ShortNameLength = 0,
+        _In_opt_ const UCHAR* SecurityDescriptor = NULL,
+        _In_ ULONG SecurityDescriptorLength = 0);
 
     NTSTATUS
     CreateFileInDirectory(
@@ -1920,7 +1933,9 @@ public:
         _In_ BOOLEAN NameKnownMissing,
         _Out_ PFileRecord* File,
         _In_opt_ PCWSTR PreferredShortName = NULL,
-        _In_ ULONG PreferredShortNameLength = 0);
+        _In_ ULONG PreferredShortNameLength = 0,
+        _In_opt_ const UCHAR* SecurityDescriptor = NULL,
+        _In_ ULONG SecurityDescriptorLength = 0);
 
     // ./namespace.cpp
     NTSTATUS

@@ -31,6 +31,9 @@ typedef struct _VolumeContextBlock
     PFILE_OBJECT StreamFileObject;
     ERESOURCE MetadataResource;
     EX_PUSH_LOCK MetadataGate;
+    ULONGLONG MetadataMoveGeneration;
+    EX_RUNDOWN_REF FileWrites;
+    EX_RUNDOWN_REF PagingWrites;
     FAST_MUTEX VolumeStateMutex;
     SHARE_ACCESS VolumeShareAccess;
     LONG OpenHandleCount;
@@ -55,6 +58,7 @@ typedef struct _VolumeContextBlock
     FAST_MUTEX MissingNameMutex;
     LIST_ENTRY MissingNameList;
     LIST_ENTRY MissingNameHash[256];
+    LIST_ENTRY MissingNameLeafHash[256];
     ULONG MissingNameCount;
 
     /* Parsed file records kept past their last handle, most recent first. */
@@ -131,6 +135,7 @@ typedef struct _NtfsMissingName
 {
     LIST_ENTRY Link;
     LIST_ENTRY HashLink;
+    LIST_ENTRY LeafLink;
     ULONG Hash;
     ULONG LeafHash;
     USHORT Length;
@@ -330,6 +335,7 @@ typedef struct _SCB
     SHARE_ACCESS ShareAccess;
     SECTION_OBJECT_POINTERS SectionObjectPointers;
     BOOLEAN SizePending;
+    LONG TrimOnClose;
     BOOLEAN Deleted;
     BOOLEAN DeletePending;
     BOOLEAN Unlinked;
@@ -414,6 +420,8 @@ typedef struct _FCB
     BOOLEAN DirRealScanStarted;
     BOOLEAN DirRecordCurrent;
     LONG DirRecordGeneration;
+    /* DirGeneration at which this open resolved FileRec by its name. */
+    LONG OpenGeneration;
 
     /* The search pattern belongs to the handle: it is supplied once and
      * every later query without a name reuses it. */
@@ -612,6 +620,24 @@ NtfsCancelShrink(_In_ PVolumeContextBlock VolCB,
  * so the two are separate calls. The caller keeps the file's own resource for
  * the whole request, which is what stops the mapping moving in between.
  */
+#define NTFS_DIRECT_IO_RUNS 16
+
+typedef struct _NTFS_DIRECT_IO_RUN
+{
+    ULONGLONG DiskOffset;
+    ULONG Length;
+} NTFS_DIRECT_IO_RUN, *PNTFS_DIRECT_IO_RUN;
+
+/* A read that runs past the valid data length transfers only TransferLength bytes; the caller zeroes from ValidLength and reports DataLength */
+typedef struct _NTFS_DIRECT_IO_MAP
+{
+    ULONG RunCount;
+    ULONG TransferLength;
+    ULONG ValidLength;
+    ULONG DataLength;
+    NTFS_DIRECT_IO_RUN Runs[NTFS_DIRECT_IO_RUNS];
+} NTFS_DIRECT_IO_MAP, *PNTFS_DIRECT_IO_MAP;
+
 NTSTATUS
 NtfsMapDirectIo(_In_ PVolumeContextBlock VolCB,
                 _In_ PFileContextBlock FileCB,
@@ -619,8 +645,8 @@ NtfsMapDirectIo(_In_ PVolumeContextBlock VolCB,
                 _In_ ULONGLONG FileOffset,
                 _In_ ULONG Length,
                 _In_ LOCK_OPERATION Operation,
-                _In_ BOOLEAN AllowExtend,
-                _Out_ PULONGLONG MappedOffset,
+                _In_ BOOLEAN AllowPastValidData,
+                _Out_ PNTFS_DIRECT_IO_MAP Map,
                 _Out_ PBOOLEAN Handled);
 
 NTSTATUS
@@ -629,6 +655,20 @@ NtfsSubmitDirectIo(_In_ PVolumeContextBlock VolCB,
                    _In_ UCHAR MajorFunction,
                    _In_ ULONGLONG DiskOffset,
                    _In_ ULONG Length);
+
+NTSTATUS
+NtfsFlushDirectIoMap(_In_ PVolumeContextBlock VolCB,
+                     _In_ PNTFS_DIRECT_IO_MAP Map);
+
+VOID
+NtfsDropDirectIoMap(_In_ PVolumeContextBlock VolCB,
+                    _In_ PNTFS_DIRECT_IO_MAP Map);
+
+NTSTATUS
+NtfsSubmitDirectIoMap(_In_ PVolumeContextBlock VolCB,
+                      _Inout_ PIRP Irp,
+                      _In_ UCHAR MajorFunction,
+                      _In_ PNTFS_DIRECT_IO_MAP Map);
 
 NTSTATUS
 NtfsLockTransferBuffer(_Inout_ PIRP Irp,
@@ -688,6 +728,25 @@ NtfsReleaseMetadata(_In_ PVolumeContextBlock VolCB)
     ExReleaseResourceLite(&VolCB->MetadataResource);
     if (Last)
         ExfReleasePushLockExclusive(&VolCB->MetadataGate);
+}
+
+static inline
+BOOLEAN
+NtfsReadAheadMetadata(_In_ PVolumeContextBlock VolCB, _In_ ULONGLONG Offset, _In_ ULONG Length)
+{
+    NTFS_BLOCK_READ *Read;
+
+    ASSERT(ExIsResourceAcquiredExclusiveLite(&VolCB->MetadataResource));
+    if (ExIsResourceAcquiredSharedLite(&VolCB->MetadataResource) != 1)
+        return FALSE;
+    Read = NtfsPrepareBlockReadKm(VolCB->StorageDevice, Offset, Length);
+    if (!Read)
+        return FALSE;
+
+    NtfsReleaseMetadata(VolCB);
+    NtfsFetchBlockKm(Read);
+    NtfsAcquireMetadata(VolCB);
+    return TRUE;
 }
 
 static inline
