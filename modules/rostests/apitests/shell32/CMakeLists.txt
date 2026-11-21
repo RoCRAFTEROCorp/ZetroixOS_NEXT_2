@@ -17,6 +17,7 @@ list(APPEND SOURCE
     CIDLData.cpp
     CMyComputer.cpp
     CommandLineToArgvW.cpp
+    ControlPanelItem.cpp
     CShellDesktop.cpp
     CShellDispatch.cpp
     CShellLink.cpp
@@ -82,6 +83,7 @@ list(APPEND SOURCE
     SHSetUnreadMailCountW.cpp
     StrRStr.cpp
     Thumbnails.cpp
+    UsersFilesFolder.cpp
     menu.cpp
     shelltest.cpp)
 

@@ -441,6 +441,12 @@ i8042ReadDataWait(
 	OUT PUCHAR Data);
 
 NTSTATUS
+i8042ReadResetReply(
+	IN PPORT_DEVICE_EXTENSION DeviceExtension,
+	IN ULONG ReplyByte,
+	OUT PUCHAR Data);
+
+NTSTATUS
 i8042ReadStatus(
 	IN PPORT_DEVICE_EXTENSION DeviceExtension,
 	OUT PUCHAR Status);

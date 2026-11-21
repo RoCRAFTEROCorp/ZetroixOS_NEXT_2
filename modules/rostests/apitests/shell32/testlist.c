@@ -18,6 +18,7 @@ extern void func_CheckEscapes(void);
 extern void func_CIDLData(void);
 extern void func_CMyComputer(void);
 extern void func_CommandLineToArgvW(void);
+extern void func_ControlPanelItem(void);
 extern void func_CShellDesktop(void);
 extern void func_CShellDispatch(void);
 extern void func_CShellLink(void);
@@ -81,6 +82,7 @@ extern void func_SHSimpleIDListFromPath(void);
 extern void func_SHRestricted(void);
 extern void func_SHSetUnreadMailCountW(void);
 extern void func_StrRStr(void);
+extern void func_UsersFilesFolder(void);
 extern void func_StartMenuPin(void);
 
 extern void func_Win81Ordinals(void);
@@ -119,6 +121,7 @@ const struct test winetest_testlist[] =
     { "CIDLData", func_CIDLData },
     { "CMyComputer", func_CMyComputer },
     { "CommandLineToArgvW", func_CommandLineToArgvW },
+    { "ControlPanelItem", func_ControlPanelItem },
     { "CShellDesktop", func_CShellDesktop },
     { "CShellDispatch", func_CShellDispatch },
     { "CShellLink", func_CShellLink },
@@ -182,6 +185,7 @@ const struct test winetest_testlist[] =
     { "SHRestricted", func_SHRestricted },
     { "SHSetUnreadMailCountW", func_SHSetUnreadMailCountW },
     { "StrRStr", func_StrRStr },
+    { "UsersFilesFolder", func_UsersFilesFolder },
 
     { "Win81Ordinals", func_Win81Ordinals },
     { 0, 0 }
