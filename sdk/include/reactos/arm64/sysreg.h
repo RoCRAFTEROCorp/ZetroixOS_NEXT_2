@@ -7,6 +7,10 @@
 
 #pragma once
 
+#if defined(_M_ARM)
+#include <reactos/arm/sysreg.h>
+#else
+
 #define ARM64_SR_ENCODE(Op0, Op1, CRn, CRm, Op2) \
     ((((Op0) & 1) << 14) | (((Op1) & 7) << 11) | (((CRn) & 15) << 7) | (((CRm) & 15) << 3) | ((Op2) & 7))
 #define ARM64_SI_ENCODE(Op1, CRn, CRm, Op2) \
@@ -159,6 +163,7 @@
 #define ARM64_SI_AT_S1E1W           ARM64_SI_ENCODE(0, 7, 8, 1)
 #define ARM64_SI_AT_S1E0R           ARM64_SI_ENCODE(0, 7, 8, 2)
 #define ARM64_SI_AT_S1E0W           ARM64_SI_ENCODE(0, 7, 8, 3)
+#define ARM64_SI_AT_S1E2R           ARM64_SI_ENCODE(4, 7, 8, 0)
 #define ARM64_SI_AT_S1E2W           ARM64_SI_ENCODE(4, 7, 8, 1)
 
 #define ARM64_OP_SYS_XZR(Si)        (0xD5080000 | ((Si) << 5) | 31)
@@ -220,5 +225,7 @@
 #define ARM64_NOP()                     __asm__ __volatile__("nop")
 #define ARM64_BRK(Imm)                  __asm__ __volatile__("brk #" #Imm ::: "memory")
 #define ARM64_COMPILER_BARRIER()        __asm__ __volatile__("" ::: "memory")
+
+#endif
 
 #endif

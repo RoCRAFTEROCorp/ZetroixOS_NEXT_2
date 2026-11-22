@@ -6,6 +6,7 @@
  */
 
 #include <blefi.h>
+#include <fdtacpi.h>
 #include <arm64.h>
 #include <reactos/arm64/early_uart.h>
 #include "../../winload/winload.h"
@@ -31,6 +32,7 @@ static ULONG OslFbRow;
 static ULONG OslFbColumn;
 static ULONG OslFbColor;
 static BOOLEAN OslFbRowCleared;
+static BOOLEAN OslFbTrapActive;
 
 static
 BOOLEAN
@@ -132,6 +134,15 @@ OslFbPuts(
 
 static
 VOID
+OslFbTrapPuts(
+    _In_ PCSTR Text)
+{
+    OslFbTrapActive = TRUE;
+    OslFbPuts(Text);
+}
+
+static
+VOID
 OslFbPrepare(VOID)
 {
     if (!FrameBufferData || !VramAddress || FrameBufferData->BitsPerPixel != 32 ||
@@ -155,10 +166,10 @@ OslFbPrepare(VOID)
     if (!OslFbColor)
         OslFbColor = 0x00FFFFFF;
     OslFbBase = (volatile ULONG *)(VramAddress + FrameBufferData->FrameBufferOffset);
-    Arm64TrapScreenRoutine = OslFbPuts;
+    Arm64TrapScreenRoutine = OslFbTrapPuts;
 }
 
-const PFN_NUMBER MmArchMaxLoaderPage = MM_MAX_PAGE_LOADER;
+PFN_NUMBER MmArchMaxLoaderPage = MM_MAX_PAGE_LOADER;
 const PFN_NUMBER MmArchMaxRamdiskPage = MM_MAX_PAGE_LOADER;
 
 void _exituefi(VOID);
@@ -175,7 +186,11 @@ VOID
 Arm64LateDebugPutChar(
     UCHAR Character)
 {
+    CHAR Text[2] = {(CHAR)Character, ANSI_NULL};
+
     EarlyUartPutc(Character);
+    if (FwDebugScreen && !OslFbTrapActive && Character != '\r')
+        OslFbPuts(Text);
 }
 
 VOID
@@ -218,7 +233,7 @@ OslArchMapFirmwareRuntime(
 VOID
 OslArchInitialize(VOID)
 {
-    Arm64DescribeDeviceTreePlatform();
+    FwDescribeDeviceTreePlatform();
     EarlyUartInitialize(0);
     FwLateDebugPutChar = Arm64LateDebugPutChar;
     Arm64InstallAppleSmbios();

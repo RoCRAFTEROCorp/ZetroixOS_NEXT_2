@@ -134,6 +134,12 @@ WinLdrSetupMemoryLayout(
     _Inout_ PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 VOID
+OslLoadHalExtensions(
+    _Inout_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ PDK_DEVICE Device,
+    _In_ PCSTR Directory);
+
+VOID
 OslLoadDriverDatabase(
     _Inout_ PLOADER_PARAMETER_BLOCK LoaderBlock,
     _In_ PDK_DEVICE Device,
@@ -175,7 +181,7 @@ OslArchPlaceRamdisk(VOID);
 
 VOID
 OslArchReserveFirmwareMemory(
-    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock);
+    _In_opt_ PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 VOID
 OslArchInitialize(VOID);

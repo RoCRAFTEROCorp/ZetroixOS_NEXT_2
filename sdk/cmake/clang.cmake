@@ -48,7 +48,7 @@ if(USE_DUMMY_PSEH)
 endif()
 
 # Clang implements native SEH for these targets.
-if(ARCH STREQUAL "amd64" OR ARCH STREQUAL "arm64" OR ARCH STREQUAL "riscv64" OR ARCH STREQUAL "ppc")
+if(NOT ARCH STREQUAL "i386")
     set(CLANG_NATIVE_SEH TRUE)
 endif()
 
@@ -60,6 +60,10 @@ if(CLANG_NATIVE_SEH AND NOT USE_DUMMY_PSEH)
     add_compile_options("$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<BOOL:$<TARGET_PROPERTY:WITH_CXX_EXCEPTIONS>>>>:SHELL:-Xclang -fasync-exceptions>")
     if(ARCH STREQUAL "arm64")
         add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-mllvm -aarch64-enable-compress-jump-tables=false>")
+    endif()
+    if(ARCH STREQUAL "arm")
+        # FIXME: at -O2 block placement asserts on functions with handlers ("Unexpected block with un-analyzable fallthrough!"); drop this with the compiler fix
+        add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-mllvm -disable-block-placement>")
     endif()
 endif()
 
@@ -191,9 +195,6 @@ endif()
 if(ARCH STREQUAL "amd64")
     add_compile_options(-mcx16) # Generate CMPXCHG16
     add_definitions(-U_X86_ -UWIN32)
-elseif(ARCH STREQUAL "arm")
-    add_definitions(-U_UNICODE -UUNICODE)
-    add_definitions(-D__MSVCRT__) # DUBIOUS
 endif()
 
 # Fix build with GLIBCXX + our c++ headers
@@ -303,7 +304,7 @@ if(ARCH STREQUAL "i386")
     set(_rc_target_flag "--target=pe-i386")
 elseif(ARCH STREQUAL "amd64")
     set(_rc_target_flag "--target=pe-x86-64")
-elseif(ARCH STREQUAL "arm64" OR ARCH STREQUAL "riscv64" OR ARCH STREQUAL "ppc")
+else()
     set(_rc_target_flag "--target=${CMAKE_C_COMPILER_TARGET}")
 endif()
 
