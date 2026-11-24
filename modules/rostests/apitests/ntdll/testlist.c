@@ -43,6 +43,7 @@ extern void func_LdrFindResource_U(void);
 extern void func_LdrForwarderPath(void);
 extern void func_LdrGetDllHandleByName(void);
 extern void func_LdrLoadDll(void);
+extern void func_LdrModuleEntry(void);
 extern void func_LdrQueryProcessModuleInformation(void);
 extern void func_load_notifications(void);
 extern void func_memmove(void);
@@ -65,6 +66,7 @@ extern void func_NtCompareTokens(void);
 extern void func_NtContinue(void);
 #endif
 #ifdef _M_AMD64
+extern void func_LdrScp(void);
 extern void func_NullGsSelector(void);
 extern void func_RtlRestoreContextConsolidate(void);
 extern void func_RtlVirtualUnwindFragment(void);
@@ -301,6 +303,7 @@ const struct test winetest_testlist[] =
     { "LdrForwarderPath",               func_LdrForwarderPath },
     { "LdrGetDllHandleByName",          func_LdrGetDllHandleByName },
     { "LdrLoadDll",                     func_LdrLoadDll },
+    { "LdrModuleEntry",                 func_LdrModuleEntry },
     { "LdrQueryProcessModuleInformation", func_LdrQueryProcessModuleInformation },
     { "load_notifications",             func_load_notifications },
     { "memmove",                        func_memmove },
@@ -324,6 +327,7 @@ const struct test winetest_testlist[] =
     { "NtContinue",                     func_NtContinue },
 #endif
 #ifdef _M_AMD64
+    { "LdrScp",                         func_LdrScp },
     { "NullGsSelector",                 func_NullGsSelector },
     { "RtlRestoreContextConsolidate",   func_RtlRestoreContextConsolidate },
     { "RtlVirtualUnwindFragment",       func_RtlVirtualUnwindFragment },
