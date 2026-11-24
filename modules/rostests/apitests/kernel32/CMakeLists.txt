@@ -32,6 +32,7 @@ list(APPEND SOURCE
     CallbackCallingConventions.c
     CdfsVolume.c
     CallbackMayRunLong.c
+    CheckElevationEnabled.c
     Arm64ThreadContext.c
     ConsoleCommandHistory.c
     ConsoleCP.c
@@ -139,6 +140,7 @@ list(APPEND SOURCE
     TimeZoneKeepsTime.c
     StdHandleInheritance.c
     StreamRename.c
+    StrippedImageLayout.c
     PosixRename.c
     LocaleNameToLCID.c
     lstrcpynW.c
