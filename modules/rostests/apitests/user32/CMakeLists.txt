@@ -104,6 +104,7 @@ list(APPEND SOURCE
     NonClientUpdate.c
     OwnedZOrder.c
     OwnerDestroy.c
+    OwnerDrawButtonCues.c
     PersianLayout.c
     PhysicalPoint.c
     PhysicalToLogicalPoint.c
@@ -113,6 +114,7 @@ list(APPEND SOURCE
     RealGetWindowClass.c
     RedrawWindow.c
     RegisterClassEx.c
+    RegisterDeviceNotification.c
     RegisterHotKey.c
     ScrollBarRedraw.c
     ScrollBarWndExtra.c

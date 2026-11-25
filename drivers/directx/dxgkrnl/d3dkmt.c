@@ -328,6 +328,16 @@ DxgkpDeleteSharedResourceObject(
     }
 }
 
+static NTSTATUS
+DxgkpInitializeSharedObjectTypes(VOID)
+{
+    NTSTATUS Status = DxgkSyncSharedObjectsInitialize();
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+    return DxgkSwapChainInitialize();
+}
+
 NTSTATUS
 DxgkSharedObjectsInitialize(VOID)
 {
@@ -337,14 +347,13 @@ DxgkSharedObjectsInitialize(VOID)
     NTSTATUS Status;
 
     if (DxgkSharedResourceObjectType != NULL)
-        return DxgkSyncSharedObjectsInitialize();
+        return DxgkpInitializeSharedObjectTypes();
 
     GenericMapping.GenericRead = STANDARD_RIGHTS_READ;
     GenericMapping.GenericWrite = STANDARD_RIGHTS_WRITE |
                                   SHARED_ALLOCATION_WRITE;
     GenericMapping.GenericExecute = STANDARD_RIGHTS_EXECUTE;
-    GenericMapping.GenericAll = STANDARD_RIGHTS_ALL |
-                                SHARED_ALLOCATION_WRITE;
+    GenericMapping.GenericAll = SHARED_ALLOCATION_ALL_ACCESS;
 
     RtlZeroMemory(&TypeInitializer, sizeof(TypeInitializer));
     RtlInitUnicodeString(&TypeName, L"DxgkSharedResource");
@@ -367,7 +376,7 @@ DxgkSharedObjectsInitialize(VOID)
                                 &DxgkSharedResourceObjectType);
     if (!NT_SUCCESS(Status))
         return Status;
-    return DxgkSyncSharedObjectsInitialize();
+    return DxgkpInitializeSharedObjectTypes();
 }
 
 POBJECT_TYPE
@@ -678,6 +687,7 @@ DxgkpKmtIoctlMinimumConfiguredLevel(
         case IOCTL_D3DKMT_SHAREOBJECTS:
         case IOCTL_RXGK_RESOLVESHAREDRESOURCENTHANDLE:
         case IOCTL_RXGK_OUTPUTDUPL:
+        case IOCTL_RXGK_SWAPCHAIN:
         case IOCTL_DXGKRNL_GET_DOD_INIT_ENTRY:
             return DXGK_CAPS_CORE_LEVEL_WDDM_1_2;
 
@@ -9255,10 +9265,15 @@ DxgkCreateSynchronizationObject2(
     }
     if (pData->Info.Type != D3DDDI_MONITORED_FENCE && pData->Info.Type != D3DDDI_PERIODIC_MONITORED_FENCE)
     {
-        /* Legacy object types share only through the same global namespace;
-         * no other flag applies to them. */
+        /* Legacy object types share through the global namespace or an NT
+         * handle; no other flag applies to them. */
+        if (pData->Info.Flags.NtSecuritySharing && !pData->Info.Flags.Shared)
+            return STATUS_INVALID_PARAMETER;
+        if (pData->Info.Type == D3DDDI_CPU_NOTIFICATION && pData->Info.Flags.Shared)
+            return STATUS_INVALID_PARAMETER;
         RtlZeroMemory(&SupportedFlags, sizeof(SupportedFlags));
         SupportedFlags.Shared = 1;
+        SupportedFlags.NtSecuritySharing = 1;
 #if (REACTOS_WDDM_TARGET_LEVEL >= 3000) && \
     (DXGKDDI_INTERFACE_VERSION >= DXGKDDI_INTERFACE_VERSION_WDDM3_0)
         if (pData->Info.Type == D3DDDI_CPU_NOTIFICATION)
@@ -13988,6 +14003,25 @@ DxgkpDispatchBufferedIoctlWorker(
             return Status;
         }
 
+        case IOCTL_RXGK_SWAPCHAIN:
+        {
+            if (!KmtRequest->Internal ||
+                KmtRequest->RequestorMode != KernelMode)
+            {
+                return STATUS_ACCESS_DENIED;
+            }
+            if (InputLength < RXGK_SWAPCHAIN_PACKET_V1_SIZE ||
+                OutputLength < RXGK_SWAPCHAIN_PACKET_V1_SIZE ||
+                SystemBuffer == NULL)
+            {
+                return STATUS_BUFFER_TOO_SMALL;
+            }
+            Status = DxgkSwapChainDispatch((PRXGK_SWAPCHAIN_PACKET)SystemBuffer);
+            if (NT_SUCCESS(Status))
+                KmtRequest->Information = RXGK_SWAPCHAIN_PACKET_V1_SIZE;
+            return Status;
+        }
+
         case IOCTL_RXGK_OUTPUTDUPL:
         {
             if (!KmtRequest->Internal ||
@@ -15408,6 +15442,7 @@ DxgkpIsBufferedKmtIoctl(
         case IOCTL_D3DKMT_PUBLIC_OPERATION:
         case IOCTL_D3DKMT_SHAREOBJECTS:
         case IOCTL_RXGK_OUTPUTDUPL:
+        case IOCTL_RXGK_SWAPCHAIN:
         case IOCTL_RXGK_RESOLVESHAREDRESOURCENTHANDLE:
         case IOCTL_RXGK_VALIDATESHAREDRESOURCEOWNER:
         case IOCTL_RXGK_SETCOMPOSITORSOURCEOWNER:

@@ -911,10 +911,10 @@ NtGdiDdDDICreateOverlay(_Inout_ D3DKMT_CREATEOVERLAY* unnamedParam1)
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDICreateSynchronizationObject(_Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT* unnamedParam1)
+NtGdiDdDDICreateSynchronizationObject(_Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT2* unnamedParam1)
 {
     RETURN_STATUS_IF_NULL(unnamedParam1);
-    D3DKMT_CALL_CALLBACK(RxgkIntPfnCreateSynchronizationObject, unnamedParam1);
+    D3DKMT_CALL_CALLBACK(RxgkIntPfnCreateSynchronizationObject2, unnamedParam1);
 }
 
 NTSTATUS
@@ -1339,14 +1339,6 @@ NtGdiDdDDIOpenResource2(_Inout_ D3DKMT_OPENRESOURCE* unnamedParam1)
 {
     RETURN_STATUS_IF_NULL(unnamedParam1);
     D3DKMT_CALL_CALLBACK(RxgkIntPfnOpenResource, unnamedParam1);
-}
-
-NTSTATUS
-APIENTRY
-NtGdiDdDDICreateSynchronizationObject2(_Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT2* unnamedParam1)
-{
-    RETURN_STATUS_IF_NULL(unnamedParam1);
-    D3DKMT_CALL_CALLBACK(RxgkIntPfnCreateSynchronizationObject2, unnamedParam1);
 }
 
 NTSTATUS
@@ -2148,6 +2140,102 @@ NtGdiDdDDIOpenSyncObjectNtHandleFromName(_Inout_ struct _D3DKMT_OPENSYNCOBJECTNT
 {
     RETURN_STATUS_IF_NULL(unnamedParam1);
     return D3DKMTOpenSyncObjectNtHandleFromName(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateSwapChain(_Inout_ struct _D3DKMT_CREATESWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTCreateSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSwapChain(_Inout_ struct _D3DKMT_OPENSWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTOpenSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAddSurfaceToSwapChain(_Inout_ struct _D3DKMT_ADDSURFACETOSWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTAddSurfaceToSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIRemoveSurfaceFromSwapChain(_In_ struct _D3DKMT_REMOVESURFACEFROMSWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTRemoveSurfaceFromSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAbandonSwapChain(_In_ struct _D3DKMT_ABANDONSWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTAbandonSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUnOrderedPresentSwapChain(_In_ struct _D3DKMT_UNORDEREDPRESENTSWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTUnOrderedPresentSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAcquireSwapChain(_Inout_ struct _D3DKMT_ACQUIRESWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTAcquireSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReleaseSwapChain(_Inout_ struct _D3DKMT_RELEASESWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTReleaseSwapChain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIGetSetSwapChainMetadata(_In_ struct _D3DKMT_GETSETSWAPCHAINMETADATA* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTGetSetSwapChainMetadata(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetDodIndirectSwapchain(_In_ struct _D3DKMT_SETDODINDIRECTSWAPCHAIN* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTSetDodIndirectSwapchain(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateBundleObject(_Inout_ struct _D3DKMT_CREATEBUNDLEOBJECT* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTCreateBundleObject(unnamedParam1);
+}
+
+NTSTATUS
+APIENTRY
+NtGdiDdDDIExtractBundleObject(_Inout_ struct _D3DKMT_EXTRACTBUNDLEOBJECT* unnamedParam1)
+{
+    RETURN_STATUS_IF_NULL(unnamedParam1);
+    return D3DKMTExtractBundleObject(unnamedParam1);
 }
 
 NTSTATUS

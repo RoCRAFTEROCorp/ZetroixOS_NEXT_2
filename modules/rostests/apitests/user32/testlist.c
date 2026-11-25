@@ -106,6 +106,7 @@ extern void func_NonClientPaint(void);
 extern void func_NonClientUpdate(void);
 extern void func_OwnedZOrder(void);
 extern void func_OwnerDestroy(void);
+extern void func_OwnerDrawButtonCues(void);
 extern void func_PersianLayout(void);
 extern void func_PhysicalPoint(void);
 extern void func_PhysicalToLogicalPoint(void);
@@ -115,6 +116,7 @@ extern void func_RealGetWindowClass(void);
 extern void func_RedrawWindow(void);
 extern void func_RegisterHotKey(void);
 extern void func_RegisterClassEx(void);
+extern void func_RegisterDeviceNotification(void);
 extern void func_ScrollBarRedraw(void);
 extern void func_ScrollBarWndExtra(void);
 extern void func_ScrollDC(void);
@@ -267,6 +269,7 @@ const struct test winetest_testlist[] =
     { "NonClientUpdate", func_NonClientUpdate },
     { "OwnedZOrder", func_OwnedZOrder },
     { "OwnerDestroy", func_OwnerDestroy },
+    { "OwnerDrawButtonCues", func_OwnerDrawButtonCues },
     { "PersianLayout", func_PersianLayout },
     { "PhysicalPoint", func_PhysicalPoint },
     { "PhysicalToLogicalPoint", func_PhysicalToLogicalPoint },
@@ -276,6 +279,7 @@ const struct test winetest_testlist[] =
     { "RedrawWindow", func_RedrawWindow },
     { "RegisterHotKey", func_RegisterHotKey },
     { "RegisterClassEx", func_RegisterClassEx },
+    { "RegisterDeviceNotification", func_RegisterDeviceNotification },
     { "ScrollBarRedraw", func_ScrollBarRedraw },
     { "ScrollBarWndExtra", func_ScrollBarWndExtra },
     { "ScrollDC", func_ScrollDC },

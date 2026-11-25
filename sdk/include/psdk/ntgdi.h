@@ -3985,7 +3985,7 @@ W32KAPI
 NTSTATUS
 APIENTRY
 NtGdiDdDDICreateSynchronizationObject(
-    _Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT* unnamedParam1);
+    _Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT2* unnamedParam1);
 
 __kernel_entry
 W32KAPI
@@ -4312,13 +4312,6 @@ NtGdiDdDDIWaitForSynchronizationObject(
     _In_ const D3DKMT_WAITFORSYNCHRONIZATIONOBJECT* unnamedParam1);
 
 /* WDDM 2.0 D3DKMT additions (ReactOS) */
-__kernel_entry
-W32KAPI
-NTSTATUS
-APIENTRY
-NtGdiDdDDICreateSynchronizationObject2(
-    _Inout_ D3DKMT_CREATESYNCHRONIZATIONOBJECT2* unnamedParam1);
-
 __kernel_entry
 W32KAPI
 NTSTATUS
@@ -4658,6 +4651,18 @@ struct _D3DKMT_OPENRESOURCEFROMNTHANDLE;
 struct _D3DKMT_OPENSYNCOBJECTFROMNTHANDLE2;
 struct _D3DKMT_OPENSYNCOBJECTFROMNTHANDLE;
 struct _D3DKMT_OPENSYNCOBJECTNTHANDLEFROMNAME;
+struct _D3DKMT_ABANDONSWAPCHAIN;
+struct _D3DKMT_ACQUIRESWAPCHAIN;
+struct _D3DKMT_ADDSURFACETOSWAPCHAIN;
+struct _D3DKMT_CREATEBUNDLEOBJECT;
+struct _D3DKMT_CREATESWAPCHAIN;
+struct _D3DKMT_EXTRACTBUNDLEOBJECT;
+struct _D3DKMT_GETSETSWAPCHAINMETADATA;
+struct _D3DKMT_OPENSWAPCHAIN;
+struct _D3DKMT_RELEASESWAPCHAIN;
+struct _D3DKMT_REMOVESURFACEFROMSWAPCHAIN;
+struct _D3DKMT_SETDODINDIRECTSWAPCHAIN;
+struct _D3DKMT_UNORDEREDPRESENTSWAPCHAIN;
 struct _D3DKMT_OUTPUTDUPLPRESENT;
 struct _D3DKMT_OUTPUTDUPL_GET_FRAMEINFO;
 struct _D3DKMT_OUTPUTDUPL_GET_POINTER_SHAPE_DATA;
@@ -4875,6 +4880,90 @@ NTSTATUS
 APIENTRY
 NtGdiDdDDIOpenSyncObjectFromNtHandle2(
     _Inout_ struct _D3DKMT_OPENSYNCOBJECTFROMNTHANDLE2* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateSwapChain(
+    _Inout_ struct _D3DKMT_CREATESWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIOpenSwapChain(
+    _Inout_ struct _D3DKMT_OPENSWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAddSurfaceToSwapChain(
+    _Inout_ struct _D3DKMT_ADDSURFACETOSWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIRemoveSurfaceFromSwapChain(
+    _In_ struct _D3DKMT_REMOVESURFACEFROMSWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAbandonSwapChain(
+    _In_ struct _D3DKMT_ABANDONSWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIUnOrderedPresentSwapChain(
+    _In_ struct _D3DKMT_UNORDEREDPRESENTSWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIAcquireSwapChain(
+    _Inout_ struct _D3DKMT_ACQUIRESWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIReleaseSwapChain(
+    _Inout_ struct _D3DKMT_RELEASESWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIGetSetSwapChainMetadata(
+    _In_ struct _D3DKMT_GETSETSWAPCHAINMETADATA* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDISetDodIndirectSwapchain(
+    _In_ struct _D3DKMT_SETDODINDIRECTSWAPCHAIN* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDICreateBundleObject(
+    _Inout_ struct _D3DKMT_CREATEBUNDLEOBJECT* unnamedParam1);
+
+__kernel_entry
+W32KAPI
+NTSTATUS
+APIENTRY
+NtGdiDdDDIExtractBundleObject(
+    _Inout_ struct _D3DKMT_EXTRACTBUNDLEOBJECT* unnamedParam1);
 
 __kernel_entry
 W32KAPI
