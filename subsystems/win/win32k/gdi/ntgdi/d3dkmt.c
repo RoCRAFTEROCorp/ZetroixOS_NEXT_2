@@ -1783,7 +1783,7 @@ NtGdiDdDDISubmitSignalSyncObjectsToHwQueue(
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDISubmitPresentBltToHwQueue(
+NtDxgkSubmitPresentBltToHwQueue(
     _In_ const struct _D3DKMT_SUBMITPRESENTBLTTOHWQUEUE* unnamedParam1)
 {
     NTSTATUS Status = D3dkmtValidateWddmThunk(unnamedParam1);
@@ -1795,7 +1795,7 @@ NtGdiDdDDISubmitPresentBltToHwQueue(
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDISubmitPresentToHwQueue(
+NtDxgkSubmitPresentToHwQueue(
     _Inout_ struct _D3DKMT_SUBMITPRESENTTOHWQUEUE* unnamedParam1)
 {
     NTSTATUS Status = D3dkmtValidateWddmThunk(unnamedParam1);
@@ -2635,7 +2635,7 @@ Cleanup:
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIEnumAdapters3(_Inout_ struct _D3DKMT_ENUMADAPTERS3* unnamedParam1)
+NtDxgkEnumAdapters3(_Inout_ struct _D3DKMT_ENUMADAPTERS3* unnamedParam1)
 {
     NTSTATUS Status = D3dkmtValidateWddmThunk(unnamedParam1);
     if (!NT_SUCCESS(Status))
@@ -2690,7 +2690,7 @@ NtGdiDdDDIReleaseKeyedMutex2(_Inout_ struct _D3DKMT_RELEASEKEYEDMUTEX2* unnamedP
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDICancelPresents(_In_ const struct _D3DKMT_CANCEL_PRESENTS* unnamedParam1)
+NtDxgkCancelPresents(_In_ const struct _D3DKMT_CANCEL_PRESENTS* unnamedParam1)
 {
     RETURN_STATUS_IF_NULL(unnamedParam1);
     return D3DKMTCancelPresents((D3DKMT_CANCEL_PRESENTS *)unnamedParam1);
@@ -3366,7 +3366,7 @@ NtGdiDdDDIPresentMultiPlaneOverlay3(_In_ const struct _D3DKMT_PRESENT_MULTIPLANE
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIIsFeatureEnabled(
+NtDxgkIsFeatureEnabled(
     _Inout_ struct _D3DKMT_ISFEATUREENABLED* unnamedParam1)
 {
     NTSTATUS Status = D3dkmtValidateWddmThunk(unnamedParam1);
@@ -3532,63 +3532,63 @@ NtGdiDdDDITrimProcessCommitment(_Inout_ D3DKMT_TRIMPROCESSCOMMITMENT *unnamedPar
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIConnectDoorbell(_In_ D3DKMT_CONNECT_DOORBELL *unnamedParam1)
+NtDxgkConnectDoorbell(_In_ D3DKMT_CONNECT_DOORBELL *unnamedParam1)
 {
     return D3DKMTConnectDoorbell(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDICreateDoorbell(_In_ D3DKMT_CREATE_DOORBELL *unnamedParam1)
+NtDxgkCreateDoorbell(_In_ D3DKMT_CREATE_DOORBELL *unnamedParam1)
 {
     return D3DKMTCreateDoorbell(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDICreateNativeFence(_Inout_ D3DKMT_CREATENATIVEFENCE *unnamedParam1)
+NtDxgkCreateNativeFence(_Inout_ D3DKMT_CREATENATIVEFENCE *unnamedParam1)
 {
     return D3DKMTCreateNativeFence(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIDestroyDoorbell(_In_ D3DKMT_DESTROY_DOORBELL *unnamedParam1)
+NtDxgkDestroyDoorbell(_In_ D3DKMT_DESTROY_DOORBELL *unnamedParam1)
 {
     return D3DKMTDestroyDoorbell(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIGetNativeFenceLogDetail(_Inout_ D3DKMT_GETNATIVEFENCELOGDETAIL *unnamedParam1)
+NtDxgkGetNativeFenceLogDetail(_Inout_ D3DKMT_GETNATIVEFENCELOGDETAIL *unnamedParam1)
 {
     return D3DKMTGetNativeFenceLogDetail(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDINotifyWorkSubmission(_In_ D3DKMT_NOTIFY_WORK_SUBMISSION *unnamedParam1)
+NtDxgkNotifyWorkSubmission(_In_ D3DKMT_NOTIFY_WORK_SUBMISSION *unnamedParam1)
 {
     return D3DKMTNotifyWorkSubmission(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIOpenNativeFenceFromNtHandle(_Inout_ D3DKMT_OPENNATIVEFENCEFROMNTHANDLE *unnamedParam1)
+NtDxgkOpenNativeFenceFromNtHandle(_Inout_ D3DKMT_OPENNATIVEFENCEFROMNTHANDLE *unnamedParam1)
 {
     return D3DKMTOpenNativeFenceFromNtHandle(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIOutputDuplPresentToHwQueue(_In_ const D3DKMT_OUTPUTDUPLPRESENTTOHWQUEUE *unnamedParam1)
+NtDxgkOutputDuplPresentToHwQueue(_In_ const D3DKMT_OUTPUTDUPLPRESENTTOHWQUEUE *unnamedParam1)
 {
     return D3DKMTOutputDuplPresentToHwQueue(unnamedParam1);
 }
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIRegisterVailProcess(_In_ GUID *unnamedParam1)
+NtDxgkRegisterVailProcess(_In_ GUID *unnamedParam1)
 {
     return D3DKMTRegisterVailProcess(unnamedParam1);
 }

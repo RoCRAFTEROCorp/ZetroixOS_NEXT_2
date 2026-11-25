@@ -9,6 +9,8 @@ list(APPEND SOURCE
     exitshared.c
     synclife.c
     queryregistry.c
+    gdi32names.c
+    win32unames.c
     testlist.c)
 add_executable(d3dkmtnt_apitest ${SOURCE})
 target_link_libraries(d3dkmtnt_apitest wine)
