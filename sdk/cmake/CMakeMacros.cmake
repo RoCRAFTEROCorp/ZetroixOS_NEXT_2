@@ -565,8 +565,15 @@ if(ENABLE_KERNEL_UBSAN)
     cmake_language(DEFER DIRECTORY ${CMAKE_SOURCE_DIR} CALL add_kernel_library_ubsan)
 endif()
 
+set(LIBERNT_CODESIGN_CERT "" CACHE FILEPATH "Certificate that signs the built modules")
+set(LIBERNT_CODESIGN_KEY "" CACHE FILEPATH "Private key that signs the built modules")
+if(LIBERNT_CODESIGN_CERT AND LIBERNT_CODESIGN_KEY)
+    find_program(OSSLSIGNCODE_PROGRAM osslsigncode REQUIRED)
+    find_program(CODESIGN_PYTHON_EXECUTABLE NAMES python3 python REQUIRED NO_CMAKE_FIND_ROOT_PATH)
+endif()
+
 function(set_module_type MODULE TYPE)
-    cmake_parse_arguments(__module "UNICODE" "IMAGEBASE;KMDF_VERSION;KMDF_MINIMUM_VERSION" "ENTRYPOINT" ${ARGN})
+    cmake_parse_arguments(__module "UNICODE;ANYHOST;HOSTBOUND" "IMAGEBASE;KMDF_VERSION;KMDF_MINIMUM_VERSION" "ENTRYPOINT" ${ARGN})
 
     if(__module_UNPARSED_ARGUMENTS)
         message(STATUS "set_module_type : unparsed arguments ${__module_UNPARSED_ARGUMENTS}, module : ${MODULE}")
@@ -608,8 +615,24 @@ function(set_module_type MODULE TYPE)
         endif()
     endif()
 
+    if(TYPE MATCHES "^(win32cui|win32gui|win32dll|win32ocx|cpl)$" AND NOT __module_HOSTBOUND AND
+       (__module_ANYHOST OR CMAKE_CURRENT_SOURCE_DIR MATCHES "/modules/rostests(/|$)"))
+        target_sources(${MODULE} PRIVATE $<TARGET_OBJECTS:libernt_anyhost>)
+    endif()
+
     # Set entry point
-    if(__module_ENTRYPOINT OR (__module_ENTRYPOINT STREQUAL "0"))
+    if(TYPE MATCHES "^(win32dll|win32ocx|cpl)$" AND (__module_ENTRYPOINT OR (__module_ENTRYPOINT STREQUAL "0")) AND
+       (__module_HOSTBOUND OR NOT (__module_ANYHOST OR CMAKE_CURRENT_SOURCE_DIR MATCHES "/modules/rostests(/|$)")) AND
+       NOT MODULE MATCHES "^ntdll")
+        add_library(${MODULE}_hostentry OBJECT ${REACTOS_SOURCE_DIR}/sdk/lib/crt/startup/hostentry.c)
+        add_dependencies(${MODULE}_hostentry psdk)
+        list(GET __module_ENTRYPOINT 0 _host_entry)
+        if(NOT _host_entry STREQUAL "0")
+            target_compile_definitions(${MODULE}_hostentry PRIVATE LIBERNT_HOST_ENTRY=${_host_entry})
+        endif()
+        target_sources(${MODULE} PRIVATE $<TARGET_OBJECTS:${MODULE}_hostentry> $<TARGET_OBJECTS:libernt_hostcheck>)
+        set_entrypoint(${MODULE} __libernt_host_entry 12)
+    elseif(__module_ENTRYPOINT OR (__module_ENTRYPOINT STREQUAL "0"))
         set_entrypoint(${MODULE} ${__module_ENTRYPOINT})
     elseif(${TYPE} STREQUAL nativecui)
         set_entrypoint(${MODULE} NtProcessStartup 4)

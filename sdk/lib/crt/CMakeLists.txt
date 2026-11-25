@@ -36,6 +36,9 @@ include(wstring/wstring.cmake)
 include(crtmath.cmake)
 include(libcntpr.cmake)
 include(msvcrtex.cmake)
+
+add_library(libernt_anyhost OBJECT startup/anyhost.c)
+add_library(libernt_hostcheck OBJECT startup/hostcheck.c)
 include(oldnames.cmake)
 
 add_library(user32_wsprintf

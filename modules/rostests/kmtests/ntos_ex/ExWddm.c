@@ -303,14 +303,6 @@ MmGetPhysicalMemoryRangesEx(
 
 BOOLEAN
 NTAPI
-ExIsManufacturingModeEnabled(VOID);
-
-BOOLEAN
-NTAPI
-ExIsSoftBoot(VOID);
-
-BOOLEAN
-NTAPI
 ExQueryFastCacheDevLicense(VOID);
 
 ULONGLONG
@@ -949,11 +941,6 @@ TestKsrPersistMemoryWithMetadata(VOID)
     ok_eq_hex(Status, STATUS_NOT_SUPPORTED);
     ok_eq_ulonglong(PersistedLength, 0xA5A5A5A5A5A5A5A5ULL);
 }
-
-NTKERNELAPI
-FIRMWARE_TYPE
-NTAPI
-ExGetFirmwareType(VOID);
 
 static
 VOID
