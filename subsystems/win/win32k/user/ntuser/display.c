@@ -904,6 +904,118 @@ UserDisplayTopologyChanged(VOID)
     return bChanged;
 }
 
+static VOID
+UserDisplayChangeDone(VOID);
+
+static BOOL
+UserDetachDisplay(
+    _In_ PPDEVOBJ ppdevDisplay)
+{
+    PPDEVOBJ ppdevGlobal, ppdevRemaining;
+    PVOID pvOldCursor;
+    BOOL bSingle, bSuccess;
+
+    ASSERT(gpmdev != NULL);
+    ASSERT(gpmdev->cDev > 1);
+    ppdevGlobal = gpmdev->ppdevGlobal;
+    bSingle = gpmdev->cDev == 2;
+    pvOldCursor = UserSetCursor(NULL, TRUE);
+    IntCompositionOnDisplayChangeBegin();
+    bSuccess = PDEVOBJ_bDetachDisplay(&gpmdev, ppdevDisplay, &ppdevRemaining);
+    IntCompositionOnDisplayChangeEnd();
+    pvOldCursor = UserSetCursor(pvOldCursor, TRUE);
+    ASSERT(pvOldCursor == NULL);
+    if (!bSuccess)
+        return FALSE;
+
+    ASSERT(gpmdev->ppdevGlobal == ppdevGlobal);
+    ASSERT(bSingle == (gpmdev->cDev == 1));
+    UserDetachMonitor((HDEV)ppdevDisplay);
+    if (bSingle)
+        UserSetMonitorDevice((HDEV)ppdevRemaining, (HDEV)ppdevGlobal);
+    UserDisplayChangeDone();
+    return TRUE;
+}
+
+/* The displays of the desktop changed: update its monitors, metrics and window, and tell the applications */
+static VOID
+UserDisplayChangeDone(VOID)
+{
+    ULONG_PTR ulResult;
+    PDESKTOP pdesk;
+    ULONG i;
+
+    ASSERT(gpmdev != NULL);
+    for (i = 0; i < gpmdev->cDev; i++)
+        UserUpdateMonitorSize((HDEV)gpmdev->dev[i].ppdev);
+    InitMetrics();
+    pdesk = IntGetActiveDesktop();
+    if (pdesk != NULL)
+        co_IntShowDesktop(pdesk, gpsi->aiSysMet[SM_CXVIRTUALSCREEN], gpsi->aiSysMet[SM_CYVIRTUALSCREEN], FALSE);
+    UserClipCursor(NULL);
+    co_IntSendMessageTimeout(HWND_BROADCAST,
+                             WM_DISPLAYCHANGE,
+                             gpsi->BitCount,
+                             MAKELONG(gpsi->aiSysMet[SM_CXSCREEN], gpsi->aiSysMet[SM_CYSCREEN]),
+                             SMTO_NORMAL,
+                             100,
+                             &ulResult);
+    UserRedrawDesktop();
+}
+
+static BOOL
+UserSwitchMultiDisplayMode(
+    _In_ PPDEVOBJ ppdev,
+    _In_ PDEVMODEW pdm)
+{
+    PVOID pvOldCursor;
+    BOOL bSuccess;
+
+    ASSERT(gpmdev != NULL);
+    ASSERT(gpmdev->cDev > 1);
+    pvOldCursor = UserSetCursor(NULL, TRUE);
+    IntCompositionOnDisplayChangeBegin();
+    bSuccess = PDEVOBJ_bSwitchMultiDisplayMode(gpmdev, ppdev, pdm);
+    IntCompositionOnDisplayChangeEnd();
+    pvOldCursor = UserSetCursor(pvOldCursor, TRUE);
+    ASSERT(pvOldCursor == NULL);
+    if (!bSuccess)
+        return FALSE;
+    UserDisplayChangeDone();
+    return TRUE;
+}
+
+static BOOL
+UserAttachDisplay(
+    _In_ PGRAPHICS_DEVICE pGraphicsDevice,
+    _In_ PDEVMODEW pdm)
+{
+    PPDEVOBJ ppdevGlobal, ppdevDisplay;
+    PVOID pvOldCursor;
+    BOOL bSingle, bSuccess;
+
+    ASSERT(gpmdev != NULL);
+    ppdevGlobal = gpmdev->ppdevGlobal;
+    bSingle = gpmdev->cDev == 1;
+    pvOldCursor = UserSetCursor(NULL, TRUE);
+    IntCompositionOnDisplayChangeBegin();
+    bSuccess = PDEVOBJ_bAttachDisplay(&gpmdev, pGraphicsDevice, pdm, &ppdevDisplay);
+    IntCompositionOnDisplayChangeEnd();
+    pvOldCursor = UserSetCursor(pvOldCursor, TRUE);
+    ASSERT(pvOldCursor == NULL);
+    if (!bSuccess)
+        return FALSE;
+
+    ASSERT(gpmdev->cDev > 1);
+    ASSERT(gpmdev->ppdevGlobal == ppdevGlobal);
+    if (bSingle)
+        UserSetMonitorDevice((HDEV)ppdevGlobal, (HDEV)gpmdev->dev[0].ppdev);
+    UserAttachMonitor((HDEV)ppdevDisplay);
+    UserDisplayChangeDone();
+    return TRUE;
+}
+
+
 /* A detach, a display outside the desktop, or any display of a multi-display desktop.
  * Returns FALSE for an ordinary mode change of a single-display desktop. */
 static BOOL
@@ -943,20 +1055,24 @@ UserChangeDisplayTopology(
 
     if (bDetach)
     {
-        if (ppdev != NULL)
-            PDEVOBJ_vRelease(ppdev);
         /* TODO: make another display primary when the primary display is detached */
         if (pGraphicsDevice->StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE)
         {
+            if (ppdev != NULL)
+                PDEVOBJ_vRelease(ppdev);
             *plResult = DISP_CHANGE_BADPARAM;
             return TRUE;
         }
         lResult = DISP_CHANGE_SUCCESSFUL;
         if (!(flags & CDS_TEST) && (flags & CDS_UPDATEREGISTRY))
             lResult = UserStoreDisplayTopology(pustrDevice, NULL, FALSE, flags);
-        /* FIXME: a display leaves the desktop at the next start */
-        if (lResult == DISP_CHANGE_SUCCESSFUL && !(flags & (CDS_TEST | CDS_NORESET)) && bOnDesktop)
+        if (lResult == DISP_CHANGE_SUCCESSFUL && !(flags & (CDS_TEST | CDS_NORESET)) && bOnDesktop &&
+            (gpmdev->cDev < 2 || !UserDetachDisplay(ppdev)))
+        {
             lResult = DISP_CHANGE_RESTART;
+        }
+        if (ppdev != NULL)
+            PDEVOBJ_vRelease(ppdev);
         *plResult = lResult;
         return TRUE;
     }
@@ -975,17 +1091,67 @@ UserChangeDisplayTopology(
                ppdev->pdmwDev->dmDisplayFrequency == newDevMode->dmDisplayFrequency &&
                ppdev->pdmwDev->dmPosition.x == newDevMode->dmPosition.x &&
                ppdev->pdmwDev->dmPosition.y == newDevMode->dmPosition.y;
-    if (ppdev != NULL)
-        PDEVOBJ_vRelease(ppdev);
     lResult = DISP_CHANGE_SUCCESSFUL;
     if (!(flags & CDS_TEST) && (flags & CDS_UPDATEREGISTRY))
         lResult = UserStoreDisplayTopology(pustrDevice, newDevMode, TRUE, flags);
-    /* FIXME: a display joins a desktop, or a multi-display desktop changes, at the next start */
     if (lResult == DISP_CHANGE_SUCCESSFUL && !(flags & (CDS_TEST | CDS_NORESET)) && !bCurrent)
-        lResult = DISP_CHANGE_RESTART;
+    {
+        if (ppdev == NULL ? !UserAttachDisplay(pGraphicsDevice, newDevMode)
+                          : !UserSwitchMultiDisplayMode(ppdev, newDevMode))
+            lResult = DISP_CHANGE_RESTART;
+    }
+    if (ppdev != NULL)
+        PDEVOBJ_vRelease(ppdev);
     ExFreePoolWithTag(newDevMode, GDITAG_DEVMODE);
     *plResult = lResult;
     return TRUE;
+}
+
+/* Applies the stored settings of each display: a mode or position change, or a display joining the desktop */
+static LONG
+UserApplyStoredDisplaySettings(
+    _In_ DWORD flags)
+{
+    PGRAPHICS_DEVICE pGraphicsDevice;
+    UNICODE_STRING ustrName;
+    PPDEVOBJ ppdev;
+    DEVMODEW dm;
+    LONG lResult = DISP_CHANGE_SUCCESSFUL;
+    LONG lDisplay;
+    ULONG i;
+
+    ASSERT(gpmdev != NULL);
+    for (i = 0; lResult == DISP_CHANGE_SUCCESSFUL && (pGraphicsDevice = EngpFindGraphicsDevice(NULL, i)) != NULL; i++)
+    {
+        if (pGraphicsDevice->StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER)
+            continue;
+        RtlInitUnicodeString(&ustrName, pGraphicsDevice->szWinDeviceName);
+        ppdev = EngpGetPDEV(&ustrName);
+        if (ppdev != NULL)
+            PDEVOBJ_vRelease(ppdev);
+        if (!EngpIsDisplayAttached(pGraphicsDevice))
+        {
+            if (ppdev != NULL)
+            {
+                RtlZeroMemory(&dm, sizeof(dm));
+                dm.dmSize = sizeof(dm);
+                dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+                if (UserChangeDisplayTopology(&ustrName, &dm, flags & ~CDS_UPDATEREGISTRY, &lDisplay))
+                    lResult = lDisplay;
+            }
+            continue;
+        }
+        RtlZeroMemory(&dm, sizeof(dm));
+        dm.dmSize = sizeof(dm);
+        if (!NT_SUCCESS(UserEnumRegistryDisplaySettings(&ustrName, &dm)) ||
+            (dm.dmFields & (DM_PELSWIDTH | DM_PELSHEIGHT)) != (DM_PELSWIDTH | DM_PELSHEIGHT))
+        {
+            continue;
+        }
+        if (UserChangeDisplayTopology(&ustrName, &dm, flags & ~CDS_UPDATEREGISTRY, &lDisplay))
+            lResult = lDisplay;
+    }
+    return lResult;
 }
 
 LONG
@@ -1035,6 +1201,8 @@ UserChangeDisplaySettings(
         return DISP_CHANGE_BADMODE;
     }
 
+    if (!pdm && !pustrDevice && gpmdev != NULL && (gpmdev->cDev > 1 || UserDisplayTopologyChanged()))
+        return UserApplyStoredDisplaySettings(flags);
     if (UserChangeDisplayTopology(pustrDevice, &dm, flags, &lResult))
         return lResult;
 
