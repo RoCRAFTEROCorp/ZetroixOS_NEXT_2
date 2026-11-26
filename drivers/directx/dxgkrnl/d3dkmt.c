@@ -11641,7 +11641,7 @@ DxgkpDispatchPublicOperation(_Inout_ PRXGK_PUBLIC_OPERATION_PACKET Packet)
             ULONG Count = DxgkReferenceStartedAdapters(Adapters, RTL_NUMBER_OF(Adapters));
             ULONG Index;
 
-            /* FIXME: GDI CPU locks of the shared primary are not tracked; Windows 11 refuses the unlock of every source of a known adapter */
+            /* win32k answers the unlocks of sources this process notified a lock for; Windows 11 refuses the others of a known adapter */
             Status = STATUS_SUCCESS;
             for (Index = 0; Index < Count; ++Index)
             {
@@ -11661,8 +11661,8 @@ DxgkpDispatchPublicOperation(_Inout_ PRXGK_PUBLIC_OPERATION_PACKET Packet)
             if (Packet->Value0 == 0 || !NT_SUCCESS(DxgkpValidateDeviceHandleForIoctl(Packet->Handle0, NULL, &Device)))
                 return STATUS_INVALID_PARAMETER;
             DxgkDereferenceDevice(Device);
-            /* TODO: composition surfaces; until they exist no present is queued on one, so nothing is cancelled */
-            return STATUS_SUCCESS;
+            /* TODO: composition surfaces; until they exist no LUID names one, and Windows 11 refuses an unknown surface */
+            return STATUS_INVALID_PARAMETER;
         }
 
         case RxgkPublicOpenNtHandleFromName:
@@ -12655,9 +12655,9 @@ DxgkpDispatchBufferedIoctlWorker(
                 return STATUS_BUFFER_TOO_SMALL;
 
             Status = DxgkOpenResource((D3DKMT_OPENRESOURCE *)SystemBuffer);
-            if (NT_SUCCESS(Status) || Status == STATUS_BUFFER_TOO_SMALL)
+            if (NT_SUCCESS(Status))
                 KmtRequest->Information = sizeof(D3DKMT_OPENRESOURCE);
-            return Status == STATUS_BUFFER_TOO_SMALL ? STATUS_BUFFER_OVERFLOW : Status;
+            return Status;
         }
 
 #if (REACTOS_WDDM_TARGET_LEVEL >= 2000)

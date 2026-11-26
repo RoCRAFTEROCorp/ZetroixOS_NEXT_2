@@ -1674,6 +1674,9 @@ HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions","ProductType",2,"WinNT"
 HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions","ProductSuite",0x00010002,"Terminal Server"
 HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions\LicenseInformation","Kernel-MUI-Language-Allowed",2,"EMPTY"
 HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions\LicenseInformation","Kernel-MUI-Number-Allowed",0x00010001,1
+HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions\LicenseInformation","Kernel-OneCore-DeviceFamilyID",0x00010001,3
+HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions\LicenseInformation","Kernel-ProductInfo",0x00010001,0x00000030
+HKLM,"SYSTEM\CurrentControlSet\Control\ProductOptions\LicenseInformation","Microsoft-Windows-Core-AllowMultiMon",0x00010001,1
 ; ReactOS specific - by default we report ourselves as Workstation for the user,
 ; but we can also report as Server if some application needs it.
 HKLM,"SYSTEM\CurrentControlSet\Control\ReactOS\Settings\Version","ReportAsWorkstation",0x00010001,0x00000001
@@ -1911,7 +1914,7 @@ HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","ErrorControl",0x00010001,0x00
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Group",0x00000000,"AudioGroup"
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","ImagePath",0x00020000,"%SystemRoot%\system32\audiosrv.exe"
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","ObjectName",0x00000000,"LocalSystem"
-HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Start",0x00010001,0x00000003
+HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Start",0x00010001,0x00000002
 HKLM,"SYSTEM\CurrentControlSet\Services\AudioSrv","Type",0x00010001,0x00000010
 
 ; Background Intelligent Transfer Service (BITS)

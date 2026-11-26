@@ -620,22 +620,74 @@ NtGdiDdDDISetProcessSchedulingPriorityClass(_In_ HANDLE unnamedParam1,
     return D3DKMTSetProcessSchedulingPriorityClass(unnamedParam1, unnamedParam2);
 }
 
+static KSPIN_LOCK D3dkmtSharedPrimaryLocksLock;
+
+static BOOLEAN
+D3dkmtFindSharedPrimaryLock(
+    _In_ PPROCESSINFO Process,
+    _In_ LUID AdapterLuid,
+    _In_ UINT VidPnSourceId,
+    _In_ BOOLEAN Record)
+{
+    BOOLEAN Found = FALSE;
+    KIRQL OldIrql;
+    UINT Index;
+
+    KeAcquireSpinLock(&D3dkmtSharedPrimaryLocksLock, &OldIrql);
+    ASSERT(Process->cSharedPrimaryLocks <= RTL_NUMBER_OF(Process->SharedPrimaryLocks));
+    for (Index = 0; Index < Process->cSharedPrimaryLocks && !Found; ++Index)
+    {
+        Found = Process->SharedPrimaryLocks[Index].AdapterLuid.LowPart == AdapterLuid.LowPart &&
+                Process->SharedPrimaryLocks[Index].AdapterLuid.HighPart == AdapterLuid.HighPart &&
+                Process->SharedPrimaryLocks[Index].VidPnSourceId == VidPnSourceId;
+    }
+    if (!Found && Record && Process->cSharedPrimaryLocks < RTL_NUMBER_OF(Process->SharedPrimaryLocks))
+    {
+        Process->SharedPrimaryLocks[Process->cSharedPrimaryLocks].AdapterLuid = AdapterLuid;
+        Process->SharedPrimaryLocks[Process->cSharedPrimaryLocks].VidPnSourceId = VidPnSourceId;
+        Process->cSharedPrimaryLocks++;
+        Found = TRUE;
+    }
+    /* FIXME: past 8 sources a process keeps no record, so the unlocks Windows 11 would accept are refused */
+    KeReleaseSpinLock(&D3dkmtSharedPrimaryLocksLock, OldIrql);
+    return Found;
+}
+
 NTSTATUS
 APIENTRY
 NtGdiDdDDISharedPrimaryLockNotification(_In_ const D3DKMT_SHAREDPRIMARYLOCKNOTIFICATION* unnamedParam1)
 {
     D3DKMT_SHAREDPRIMARYLOCKNOTIFICATION Captured;
+    PPROCESSINFO Process;
+    NTSTATUS Status;
 
     RETURN_STATUS_IF_NULL(unnamedParam1);
     /* Windows 11 accepts the notification for any adapter LUID, source and rectangle. */
-    return D3dkmtCaptureUserStructure((PVOID)unnamedParam1, sizeof(Captured), &Captured);
+    Status = D3dkmtCaptureUserStructure((PVOID)unnamedParam1, sizeof(Captured), &Captured);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    Process = PsGetCurrentProcessWin32Process();
+    if (Process != NULL)
+        D3dkmtFindSharedPrimaryLock(Process, Captured.AdapterLuid, Captured.VidPnSourceId, TRUE);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
 APIENTRY
 NtGdiDdDDISharedPrimaryUnLockNotification(_In_ const D3DKMT_SHAREDPRIMARYUNLOCKNOTIFICATION* unnamedParam1)
 {
+    D3DKMT_SHAREDPRIMARYUNLOCKNOTIFICATION Captured;
+    PPROCESSINFO Process;
+    NTSTATUS Status;
+
     RETURN_STATUS_IF_NULL(unnamedParam1);
+    Status = D3dkmtCaptureUserStructure((PVOID)unnamedParam1, sizeof(Captured), &Captured);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    /* Once a process has notified a lock of a source, Windows 11 accepts every later unlock of that source from it */
+    Process = PsGetCurrentProcessWin32Process();
+    if (Process != NULL && D3dkmtFindSharedPrimaryLock(Process, Captured.AdapterLuid, Captured.VidPnSourceId, FALSE))
+        return STATUS_SUCCESS;
     return D3DKMTSharedPrimaryUnLockNotification(unnamedParam1);
 }
 
@@ -1351,24 +1403,6 @@ NtGdiDdDDIOpenSynchronizationObject(_Inout_ D3DKMT_OPENSYNCHRONIZATIONOBJECT* un
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIWaitForSynchronizationObject2(_In_ const D3DKMT_WAITFORSYNCHRONIZATIONOBJECT2* unnamedParam1)
-{
-    RETURN_STATUS_IF_NULL(unnamedParam1);
-    /* The bridge owns top-level capture and all field validation. */
-    D3DKMT_CALL_CALLBACK(RxgkIntPfnWaitForSynchronizationObject2, unnamedParam1);
-}
-
-NTSTATUS
-APIENTRY
-NtGdiDdDDISignalSynchronizationObject2(_In_ const D3DKMT_SIGNALSYNCHRONIZATIONOBJECT2* unnamedParam1)
-{
-    RETURN_STATUS_IF_NULL(unnamedParam1);
-    /* The bridge owns top-level capture and all field validation. */
-    D3DKMT_CALL_CALLBACK(RxgkIntPfnSignalSynchronizationObject2, unnamedParam1);
-}
-
-NTSTATUS
-APIENTRY
 NtGdiDdDDICreateKeyedMutex(_Inout_ D3DKMT_CREATEKEYEDMUTEX* unnamedParam1)
 {
     NTSTATUS Status = D3dkmtValidateWddmThunk(unnamedParam1);
@@ -1476,10 +1510,11 @@ NtGdiDdDDIWaitForIdle(_In_ const D3DKMT_WAITFORIDLE* unnamedParam1)
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDIWaitForSynchronizationObject(_In_ const D3DKMT_WAITFORSYNCHRONIZATIONOBJECT* unnamedParam1)
+NtGdiDdDDIWaitForSynchronizationObject(_In_ const D3DKMT_WAITFORSYNCHRONIZATIONOBJECT2* unnamedParam1)
 {
     RETURN_STATUS_IF_NULL(unnamedParam1);
-    D3DKMT_CALL_CALLBACK(RxgkIntPfnWaitForSynchronizationObject, unnamedParam1);
+    /* The bridge owns top-level capture and all field validation. */
+    D3DKMT_CALL_CALLBACK(RxgkIntPfnWaitForSynchronizationObject2, unnamedParam1);
 }
 
 NTSTATUS
@@ -1492,10 +1527,11 @@ NtGdiDdDDIWaitForVerticalBlankEvent(_In_ const D3DKMT_WAITFORVERTICALBLANKEVENT*
 
 NTSTATUS
 APIENTRY
-NtGdiDdDDISignalSynchronizationObject(_In_ const D3DKMT_SIGNALSYNCHRONIZATIONOBJECT* unnamedParam1)
+NtGdiDdDDISignalSynchronizationObject(_In_ const D3DKMT_SIGNALSYNCHRONIZATIONOBJECT2* unnamedParam1)
 {
     RETURN_STATUS_IF_NULL(unnamedParam1);
-    D3DKMT_CALL_CALLBACK(RxgkIntPfnSignalSynchronizationObject, unnamedParam1);
+    /* The bridge owns top-level capture and all field validation. */
+    D3DKMT_CALL_CALLBACK(RxgkIntPfnSignalSynchronizationObject2, unnamedParam1);
 }
 
 /* ---- WDDM 1.2 additions ------------------------------------------------ */
@@ -2033,8 +2069,8 @@ NtGdiDdDDIOpenResourceFromNtHandle(_Inout_ struct _D3DKMT_OPENRESOURCEFROMNTHAND
     OpenResource.TotalPrivateDriverDataBufferSize =
         Captured.TotalPrivateDriverDataBufferSize;
 
-    Status = D3DKMTOpenResource(&OpenResource);
-    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL)
+    Status = D3dkmtBridgeOpenResourceEntries2(&OpenResource);
+    if (!NT_SUCCESS(Status))
         return Status;
 
     Captured.NumAllocations = OpenResource.NumAllocations;

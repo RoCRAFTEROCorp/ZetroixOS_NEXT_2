@@ -15,6 +15,7 @@ VOID     WddmBridgeCleanup(VOID);
 NTSTATUS WddmBridgeGetStatus(VOID);
 NTSTATUS WddmBridgeRequireReady(VOID);
 BOOLEAN  WddmBridgeIsReady(VOID);
+BOOLEAN  WddmBridgeIsProviderBound(VOID);
 ULONG    WddmBridgeGetInterfaceVersion(VOID);
 NTSTATUS WddmBridgeGetInterface(_Out_ PREACTOS_WIN32K_DXGKRNL_INTERFACE Interface);
 
@@ -69,6 +70,10 @@ WddmBridgeSetCompositorSourceOwner(
 
 NTSTATUS
 WddmBridgeRegisterDwmProcess(VOID);
+
+NTSTATUS
+D3dkmtBridgeOpenResourceEntries2(
+    _Inout_ D3DKMT_OPENRESOURCE *pData);
 
 /* Cached device object pointer (set by WddmBridgeInit) */
 extern PFILE_OBJECT   g_DxgkrnlFileObject;
