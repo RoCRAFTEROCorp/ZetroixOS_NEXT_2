@@ -831,7 +831,8 @@ DxgkpShouldRegisterDisplayBridge(
     TakeOverFromFallback = !RegisterDisplayBridge &&
                            Owner != NULL &&
                            DxgkPostDisplayCoreOutranks(DxgkpPostDisplayRole(Claimant),
-                                                       DxgkpPostDisplayRole(Owner));
+                                                       DxgkpPostDisplayRole(Owner)) &&
+                           DxgkAdapterHasMemoryResources(Claimant->TranslatedResources);
 
     if (OwnerDeviceObject != NULL)
         ObDereferenceObject(OwnerDeviceObject);
@@ -870,6 +871,9 @@ DxgkpShouldRegisterDisplayBridge(
         KeReleaseMutex(&g_PostDisplayOwnershipMutex, FALSE);
     }
 
+    /* Source displays skip display-only adapters, so each of them gets a bridge of its own */
+    if (Claimant->MiniportContext->IsDisplayOnlyDriver)
+        RegisterDisplayBridge = TRUE;
     if (!RegisterDisplayBridge)
     {
         DXGKRNL_WARN("DISPLAY_BRIDGE: adapter %p did not claim POST ownership; "
@@ -16814,8 +16818,8 @@ DxgkpMiniportPnpDispatch(
      */
 
     /* Route \Device\Video0 PnP IRPs to the display handler. */
-    if (DxgkDisplayDispatchPnp(DeviceObject, Irp))
-        return STATUS_SUCCESS;
+    if (DxgkDisplayDispatchPnp(DeviceObject, Irp, &Status))
+        return Status;
 
     /* Route \Device\DxgKrnl PnP IRPs — complete with success (no-op). */
     if (GDxgControlDeviceObject != NULL && DeviceObject == GDxgControlDeviceObject)
@@ -16923,12 +16927,18 @@ DxgkpMiniportPnpDispatch(
 
         case IRP_MN_QUERY_REMOVE_DEVICE:
         {
-            if (DxgkIsDisplayAdapter(Adapter))
+            if (DxgkIsDisplayAdapter(Adapter) && !DxgkDisplayBeginRemove(Adapter))
             {
                 Irp->IoStatus.Status = STATUS_DEVICE_BUSY;
                 IoCompleteRequest(Irp, IO_NO_INCREMENT);
                 return STATUS_DEVICE_BUSY;
             }
+            return DxgkpForwardIrp(Adapter, Irp);
+        }
+
+        case IRP_MN_CANCEL_REMOVE_DEVICE:
+        {
+            DxgkDisplaySetRemovePending(Adapter, FALSE);
             return DxgkpForwardIrp(Adapter, Irp);
         }
 
@@ -17110,6 +17120,7 @@ DxgkpMiniportPnpDispatch(
             NTSTATUS NotifyStatus = STATUS_UNSUCCESSFUL;
             NTSTATUS StopStatus = STATUS_SUCCESS;
 
+            DxgkDisplaySetRemovePending(Adapter, TRUE);
             DxgkpAcquireAdapterMutexAfterStart(Adapter);
             PreviousState = Adapter->State;
             WaitForStop = (InterlockedCompareExchange(&Adapter->AdapterStopInProgress, 0, 0) != 0);
@@ -17530,15 +17541,12 @@ DxgkpMiniportPowerDispatch(
     }
 
     /* Check for display device (\Device\Video0) — not a real power device. */
+    if (DxgkIsDisplayBridgeDevice(DeviceObject))
     {
-        extern PDEVICE_OBJECT g_DisplayDeviceObject;
-        if (g_DisplayDeviceObject != NULL && DeviceObject == g_DisplayDeviceObject)
-        {
-            PoStartNextPowerIrp(Irp);
-            Irp->IoStatus.Status = STATUS_SUCCESS;
-            IoCompleteRequest(Irp, IO_NO_INCREMENT);
-            return STATUS_SUCCESS;
-        }
+        PoStartNextPowerIrp(Irp);
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
     }
 
     Adapter = DXGKRNL_ADAPTER_FROM_DEVOBJ(DeviceObject);

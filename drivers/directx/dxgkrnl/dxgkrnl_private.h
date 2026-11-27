@@ -1206,6 +1206,9 @@ struct _DXGKRNL_ADAPTER
     ULONG                       InheritedDesktopHeight;
     BOOLEAN                     VidPnCommitted;
     BOOLEAN                     HeadlessDesktop;
+    BOOLEAN                     MonitorEventValid;
+    ULONG                       MonitorEventChildUid;
+    ULONG64                     MonitorEventConnectSequence;
     struct _DXGKP_DISPLAY_MODE_CACHE *DisplayModeCache;
     ULONG                       DisplayModeGeneration;
     DECLSPEC_ALIGN(8) volatile LONG64 HotPlugGeneration;
@@ -1531,6 +1534,7 @@ struct _DXGKRNL_ADAPTER
     UNICODE_STRING              DisplayAdapterInterfaceName;
     BOOLEAN                     DisplayAdapterInterfaceEnabled;
     WCHAR                       DisplayDeviceName[24];
+    struct _DXGKP_DISPLAY_BRIDGE *DisplayBridge;
 
     /* ACPI and power-state event subscriptions (acpievent.c). */
     DXGKP_ACPI_EVENTS           AcpiEvents;
@@ -3955,6 +3959,10 @@ VOID
 DxgkDisplayAbortDetach(
     _In_ PDXGKRNL_ADAPTER Adapter);
 
+BOOLEAN
+DxgkIsDisplayBridgeDevice(
+    _In_opt_ PDEVICE_OBJECT DeviceObject);
+
 NTSTATUS
 DxgkCreateRedirectionSurface(
     _In_ PDXGKRNL_ADAPTER Adapter,
@@ -4141,6 +4149,15 @@ DxgkDisplayResolveVideoDevice(
     _Out_ PDXGKRNL_ADAPTER *Adapter,
     _Out_ D3DDDI_VIDEO_PRESENT_SOURCE_ID *SourceId);
 
+BOOLEAN
+DxgkDisplayBeginRemove(
+    _In_ PDXGKRNL_ADAPTER Adapter);
+
+VOID
+DxgkDisplaySetRemovePending(
+    _In_ PDXGKRNL_ADAPTER Adapter,
+    _In_ BOOLEAN RemovePending);
+
 /*
  * Display dispatch helpers — called from dxgkrnl dispatch routines
  * to route IRPs targeting \Device\Video0 to the display handler.
@@ -4155,17 +4172,20 @@ DxgkDisplayDispatchIoctl(
 BOOLEAN
 DxgkDisplayDispatchCreate(
     _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp);
+    _In_ PIRP           Irp,
+    _Out_ PNTSTATUS     Status);
 
 BOOLEAN
 DxgkDisplayDispatchClose(
     _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp);
+    _In_ PIRP           Irp,
+    _Out_ PNTSTATUS     Status);
 
 BOOLEAN
 DxgkDisplayDispatchPnp(
     _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ PIRP           Irp);
+    _In_ PIRP           Irp,
+    _Out_ PNTSTATUS     Status);
 
 NTSTATUS
 DxgkDisplayCommitVidPn(
@@ -4173,7 +4193,8 @@ DxgkDisplayCommitVidPn(
 
 VOID
 DxgkpDisplayPublishInitialMode(
-    _In_ PDXGKRNL_ADAPTER Adapter);
+    _In_ PDXGKRNL_ADAPTER Adapter,
+    _In_ BOOLEAN RequestedMode);
 
 VOID
 DxgkDisplayNotifyMonitorEvent(

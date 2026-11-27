@@ -9,6 +9,7 @@ add_message_headers(ANSI FormatMessage.mc)
 
 list(APPEND SOURCE
     ApiSetHosts.c
+    BackupSemanticsAccess.c
     FileSecurityCache.c
     ActCtxDependencyVersions.c
     AlternateComputerNames.c
@@ -177,6 +178,7 @@ list(APPEND SOURCE
     RemoteThreadInit.c
     RenameAsyncHandle.c
     RenameDirectoryOldPath.c
+    RenameReplaceRestore.c
     ResizePseudoConsole.c
     SetCalendarInfo.c
     SetComputerNameExW.c

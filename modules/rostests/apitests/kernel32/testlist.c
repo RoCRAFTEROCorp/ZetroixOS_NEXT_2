@@ -167,6 +167,8 @@ extern void func_PagingFileOpen(void);
 extern void func_PrivMoveFileIdentityW(void);
 extern void func_RenameAsyncHandle(void);
 extern void func_RenameDirectoryOldPath(void);
+extern void func_RenameReplaceRestore(void);
+extern void func_BackupSemanticsAccess(void);
 extern void func_QueueUserAPC(void);
 extern void func_QueryProcessCycleTime(void);
 extern void func_ResizePseudoConsole(void);
@@ -410,6 +412,8 @@ const struct test winetest_testlist[] =
     { "PrivMoveFileIdentityW",       func_PrivMoveFileIdentityW },
     { "RenameAsyncHandle",           func_RenameAsyncHandle },
     { "RenameDirectoryOldPath",      func_RenameDirectoryOldPath },
+    { "RenameReplaceRestore",        func_RenameReplaceRestore },
+    { "BackupSemanticsAccess",       func_BackupSemanticsAccess },
     { "QueueUserAPC",                func_QueueUserAPC },
     { "QueryProcessCycleTime",       func_QueryProcessCycleTime },
     { "ResizePseudoConsole",         func_ResizePseudoConsole },

@@ -3267,10 +3267,12 @@ NtUserSwitchDesktop(HDESK hdesk)
 
     /* Set the global state. */
     gpdeskInputDesktop = pdesk;
+    IntSetInputDesktopForeground(pdesk);
     IntGetSysCursorInfo()->bClipped = FALSE;
 
     /* Show the new desktop window */
     co_IntShowDesktop(pdesk, UserGetSystemMetrics(SM_CXVIRTUALSCREEN), UserGetSystemMetrics(SM_CYVIRTUALSCREEN), bRedrawDesktop);
+    UserNotifyDesktopDisplayChange(pdesk);
 
     if (!gpmdev)
         co_IntGraphicsCheck(TRUE);
