@@ -161,7 +161,7 @@ static BOOL HasTcbPrivilege(void)
     DWORD Len, i;
     BOOL Found = FALSE;
 
-    if (!LookupPrivilegeValueW(NULL, SE_TCB_NAME, &Tcb) ||
+    if (!LookupPrivilegeValueW(NULL, L"SeTcbPrivilege", &Tcb) ||
         !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &Process))
         return FALSE;
     if (GetTokenInformation(Process, TokenPrivileges, Privileges, sizeof(Buffer), &Len))
