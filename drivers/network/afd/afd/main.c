@@ -32,6 +32,7 @@ static LIST_ENTRY AfdAddressListChangeSockets;
 static FAST_MUTEX AfdAddressListChangeLock;
 static UNICODE_STRING AfdTdiClientName = RTL_CONSTANT_STRING(L"AFD");
 static HANDLE AfdTdiBindingHandle;
+static KDEFERRED_ROUTINE AfdDisconnectTimeoutDpc;
 
 void OskitDumpBuffer( PCHAR Data, UINT Len ) {
     unsigned int i;
@@ -454,7 +455,22 @@ AfdCreateSocket(PDEVICE_OBJECT DeviceObject, PIRP Irp,
         }
     }
 
+    FCB->DisconnectWorkItem = IoAllocateWorkItem(DeviceObject);
+    if (!FCB->DisconnectWorkItem)
+    {
+        if (FCB->ReceiveWorkItem)
+            IoFreeWorkItem(FCB->ReceiveWorkItem);
+        ExFreePoolWithTag(FCB, TAG_AFD_FCB);
+        Irp->IoStatus.Status = STATUS_NO_MEMORY;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_NO_MEMORY;
+    }
+
     KeInitializeMutex( &FCB->Mutex, 0 );
+    KeInitializeTimer( &FCB->DisconnectTimer );
+    KeInitializeDpc( &FCB->DisconnectDpc, AfdDisconnectTimeoutDpc, FCB );
+    KeInitializeEvent( &FCB->DisconnectWorkerDone, NotificationEvent, TRUE );
+    FCB->DisconnectWorkerActive = 0;
 
     for( i = 0; i < MAX_FUNCTIONS; i++ ) {
         InitializeListHead( &FCB->PendingIrpList[i] );
@@ -478,6 +494,7 @@ AfdCreateSocket(PDEVICE_OBJECT DeviceObject, PIRP Irp,
         if( !FCB->TdiDeviceName.Buffer ) {
             if (FCB->ReceiveWorkItem)
                 IoFreeWorkItem(FCB->ReceiveWorkItem);
+            IoFreeWorkItem(FCB->DisconnectWorkItem);
             ExFreePoolWithTag(FCB, TAG_AFD_FCB);
             AFD_DbgPrint(MID_TRACE,("Could not copy target string\n"));
             Irp->IoStatus.Status = STATUS_NO_MEMORY;
@@ -514,6 +531,7 @@ AfdCreateSocket(PDEVICE_OBJECT DeviceObject, PIRP Irp,
         }
         if (FCB->ReceiveWorkItem)
             IoFreeWorkItem(FCB->ReceiveWorkItem);
+        IoFreeWorkItem(FCB->DisconnectWorkItem);
         ExFreePoolWithTag(FCB, TAG_AFD_FCB);
         FileObject->FsContext = NULL;
     }
@@ -778,6 +796,12 @@ AfdCloseSocket(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     if (FCB->ReceiveWorkItem)
         IoFreeWorkItem(FCB->ReceiveWorkItem);
 
+    KeCancelTimer(&FCB->DisconnectTimer);
+    KeFlushQueuedDpcs();
+    KeWaitForSingleObject(&FCB->DisconnectWorkerDone, Executive, KernelMode, FALSE, NULL);
+    if (FCB->DisconnectWorkItem)
+        IoFreeWorkItem(FCB->DisconnectWorkItem);
+
     ExFreePoolWithTag(FCB, TAG_AFD_FCB);
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -875,6 +899,8 @@ DoDisconnect(PAFD_FCB FCB)
         return STATUS_PENDING;
     }
 
+    KeCancelTimer(&FCB->DisconnectTimer);
+
     FCB->ConnectCallInfo->UserData = FCB->DisconnectData;
     FCB->ConnectCallInfo->UserDataLength = FCB->DisconnectDataSize;
     FCB->ConnectCallInfo->Options = FCB->DisconnectOptions;
@@ -894,6 +920,65 @@ DoDisconnect(PAFD_FCB FCB)
     }
 
     return Status;
+}
+
+static
+VOID
+NTAPI
+AfdDisconnectTimeoutWorker(PDEVICE_OBJECT DeviceObject,
+                           PVOID Context)
+{
+    PAFD_FCB FCB = Context;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
+
+    if (SocketAcquireStateLock(FCB))
+    {
+        if (FCB->DisconnectPending &&
+            FCB->SharedData.State != SOCKET_STATE_CLOSED &&
+            !FCB->DisconnectIrp.InFlightRequest &&
+            (!IsListEmpty(&FCB->PendingIrpList[FUNCTION_SEND]) || FCB->SendIrp.InFlightRequest))
+        {
+            if (FCB->SendIrp.InFlightRequest)
+                IoCancelIrp(FCB->SendIrp.InFlightRequest);
+            if (!FCB->SendIrp.InFlightRequest)
+            {
+                AfdFailSendQueue(FCB, STATUS_TIMEOUT);
+                RetryDisconnectCompletion(FCB);
+            }
+        }
+
+        SocketStateUnlock(FCB);
+    }
+
+    if (InterlockedDecrement(&FCB->DisconnectWorkerActive) == 0)
+        KeSetEvent(&FCB->DisconnectWorkerDone, IO_NO_INCREMENT, FALSE);
+}
+
+static
+VOID
+NTAPI
+AfdDisconnectTimeoutDpc(PKDPC Dpc,
+                        PVOID DeferredContext,
+                        PVOID SystemArgument1,
+                        PVOID SystemArgument2)
+{
+    PAFD_FCB FCB = DeferredContext;
+
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument1);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+
+    if (InterlockedIncrement(&FCB->DisconnectWorkerActive) == 1)
+    {
+        KeClearEvent(&FCB->DisconnectWorkerDone);
+        IoQueueWorkItem(FCB->DisconnectWorkItem, AfdDisconnectTimeoutWorker,
+                        DelayedWorkQueue, FCB);
+    }
+    else
+    {
+        InterlockedDecrement(&FCB->DisconnectWorkerActive);
+    }
 }
 
 VOID
@@ -995,6 +1080,7 @@ AfdDisconnect(PDEVICE_OBJECT DeviceObject, PIRP Irp,
             }
             else
             {
+                KeCancelTimer(&FCB->DisconnectTimer);
                 while (!IsListEmpty(&FCB->PendingIrpList[FUNCTION_DISCONNECT]))
                 {
                     CurrentEntry = RemoveHeadList(&FCB->PendingIrpList[FUNCTION_DISCONNECT]);
@@ -1022,6 +1108,20 @@ AfdDisconnect(PDEVICE_OBJECT DeviceObject, PIRP Irp,
             {
                 /* Go ahead and execute the disconnect because we're ready for it */
                 Status = DoDisconnect(FCB);
+            }
+            else if (FCB->DisconnectTimeout.QuadPart == 0)
+            {
+                if (FCB->SendIrp.InFlightRequest)
+                    IoCancelIrp(FCB->SendIrp.InFlightRequest);
+                if (!FCB->SendIrp.InFlightRequest)
+                {
+                    AfdFailSendQueue(FCB, STATUS_FILE_CLOSED);
+                    Status = DoDisconnect(FCB);
+                }
+            }
+            else
+            {
+                KeSetTimer(&FCB->DisconnectTimer, FCB->DisconnectTimeout, &FCB->DisconnectDpc);
             }
 
             if (Status != STATUS_PENDING)
