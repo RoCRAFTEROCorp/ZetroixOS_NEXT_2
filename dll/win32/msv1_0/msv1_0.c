@@ -578,7 +578,6 @@ MsvpChangePassword(IN PLSA_CLIENT_REQUEST ClientRequest,
 {
     NTSTATUS Status;
     PMSV1_0_CHANGEPASSWORD_REQUEST RequestBuffer;
-    ULONG_PTR PtrOffset;
 
     SAMPR_HANDLE ServerHandle = NULL;
     PRPC_SID DomainSid = NULL;
@@ -604,35 +603,17 @@ MsvpChangePassword(IN PLSA_CLIENT_REQUEST ClientRequest,
     ASSERT(RequestBuffer->MessageType == MsV1_0ChangePassword);
 
     /* Fix-up pointers in the request buffer info */
-    PtrOffset = (ULONG_PTR)ProtocolSubmitBuffer - (ULONG_PTR)ClientBufferBase;
-
-    Status = RtlValidateUnicodeString(0, &RequestBuffer->DomainName);
-    if (!NT_SUCCESS(Status))
+    if (!NtlmFixupAndValidateUStr(&RequestBuffer->DomainName, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferLength))
         return STATUS_INVALID_PARAMETER;
-    // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-    RequestBuffer->DomainName.Buffer = FIXUP_POINTER(RequestBuffer->DomainName.Buffer, PtrOffset);
-    RequestBuffer->DomainName.MaximumLength = RequestBuffer->DomainName.Length;
 
-    Status = RtlValidateUnicodeString(0, &RequestBuffer->AccountName);
-    if (!NT_SUCCESS(Status))
+    if (!NtlmFixupAndValidateUStr(&RequestBuffer->AccountName, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferLength))
         return STATUS_INVALID_PARAMETER;
-    // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-    RequestBuffer->AccountName.Buffer = FIXUP_POINTER(RequestBuffer->AccountName.Buffer, PtrOffset);
-    RequestBuffer->AccountName.MaximumLength = RequestBuffer->AccountName.Length;
 
-    Status = RtlValidateUnicodeString(0, &RequestBuffer->OldPassword);
-    if (!NT_SUCCESS(Status))
+    if (!NtlmFixupAndValidateUStr(&RequestBuffer->OldPassword, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferLength))
         return STATUS_INVALID_PARAMETER;
-    // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-    RequestBuffer->OldPassword.Buffer = FIXUP_POINTER(RequestBuffer->OldPassword.Buffer, PtrOffset);
-    RequestBuffer->OldPassword.MaximumLength = RequestBuffer->OldPassword.Length;
 
-    Status = RtlValidateUnicodeString(0, &RequestBuffer->NewPassword);
-    if (!NT_SUCCESS(Status))
+    if (!NtlmFixupAndValidateUStr(&RequestBuffer->NewPassword, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferLength))
         return STATUS_INVALID_PARAMETER;
-    // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-    RequestBuffer->NewPassword.Buffer = FIXUP_POINTER(RequestBuffer->NewPassword.Buffer, PtrOffset);
-    RequestBuffer->NewPassword.MaximumLength = RequestBuffer->NewPassword.Length;
 
     TRACE("Domain: %wZ\n", &RequestBuffer->DomainName);
     TRACE("Account: %wZ\n", &RequestBuffer->AccountName);
@@ -1149,13 +1130,14 @@ LsaApCallPackage(IN PLSA_CLIENT_REQUEST ClientRequest,
             break;
 
         case MsV1_0ChangePassword:
-            Status = MsvpChangePassword(ClientRequest,
-                                        ProtocolSubmitBuffer,
-                                        ClientBufferBase,
-                                        SubmitBufferLength,
-                                        ProtocolReturnBuffer,
-                                        ReturnBufferLength,
-                                        ProtocolStatus);
+            *ProtocolStatus = MsvpChangePassword(ClientRequest,
+                                                 ProtocolSubmitBuffer,
+                                                 ClientBufferBase,
+                                                 SubmitBufferLength,
+                                                 ProtocolReturnBuffer,
+                                                 ReturnBufferLength,
+                                                 ProtocolStatus);
+            Status = STATUS_SUCCESS;
             break;
 
         case MsV1_0ChangeCachedPassword:
@@ -1220,13 +1202,16 @@ LsaApCallPackageUntrusted(IN PLSA_CLIENT_REQUEST ClientRequest,
     *ReturnBufferLength = 0;
 
     if (MessageType == MsV1_0ChangePassword)
-        Status = MsvpChangePassword(ClientRequest,
-                                    ProtocolSubmitBuffer,
-                                    ClientBufferBase,
-                                    SubmitBufferLength,
-                                    ProtocolReturnBuffer,
-                                    ReturnBufferLength,
-                                    ProtocolStatus);
+    {
+        *ProtocolStatus = MsvpChangePassword(ClientRequest,
+                                             ProtocolSubmitBuffer,
+                                             ClientBufferBase,
+                                             SubmitBufferLength,
+                                             ProtocolReturnBuffer,
+                                             ReturnBufferLength,
+                                             ProtocolStatus);
+        Status = STATUS_SUCCESS;
+    }
     else
         Status = STATUS_ACCESS_DENIED;
 
@@ -1374,7 +1359,6 @@ LsaApLogonUserEx2_Network(
 {
     NTSTATUS Status;
     PMSV1_0_LM20_LOGON LogonInfo;
-    ULONG_PTR PtrOffset;
 
     *LogonProfile = NULL;
     *LogonProfileSize = 0;
@@ -1390,13 +1374,11 @@ LsaApLogonUserEx2_Network(
     }
 
     /* Fix-up pointers in the authentication info */
-    PtrOffset = (ULONG_PTR)ProtocolSubmitBuffer - (ULONG_PTR)ClientBufferBase;
-
-    if ((!NtlmFixupAndValidateUStr(&LogonInfo->LogonDomainName, PtrOffset)) ||
-        (!NtlmFixupAndValidateUStr(&LogonInfo->UserName, PtrOffset)) ||
-        (!NtlmFixupAndValidateUStr(&LogonInfo->Workstation, PtrOffset)) ||
-        (!NtlmFixupAStr(&LogonInfo->CaseSensitiveChallengeResponse, PtrOffset)) ||
-        (!NtlmFixupAStr(&LogonInfo->CaseInsensitiveChallengeResponse, PtrOffset)))
+    if ((!NtlmFixupAndValidateUStr(&LogonInfo->LogonDomainName, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize)) ||
+        (!NtlmFixupAndValidateUStr(&LogonInfo->UserName, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize)) ||
+        (!NtlmFixupAndValidateUStr(&LogonInfo->Workstation, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize)) ||
+        (!NtlmFixupAStr(&LogonInfo->CaseSensitiveChallengeResponse, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize)) ||
+        (!NtlmFixupAStr(&LogonInfo->CaseInsensitiveChallengeResponse, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize)))
     {
         return STATUS_INVALID_PARAMETER;
     }
@@ -1437,7 +1419,8 @@ LsaApLogonUserEx2_Network(
                              AccountDomainSidPtr,
                              UserHandlePtr,
                              UserInfoPtr,
-                             SubStatus);
+                             SubStatus,
+                             FALSE);
     if (!NT_SUCCESS(Status))
     {
         ERR("SamValidateUser failed with 0x%lx\n", Status);
@@ -1504,6 +1487,7 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
     PLOGON_LIST_ENTRY LogonEntry = NULL;
     BOOLEAN WellKnownLogon = FALSE, ExistingLogon = FALSE;
     BOOLEAN PlainNetwork;
+    BOOLEAN S4ULogon = FALSE;
 
     TRACE("LsaApLogonUserEx2()\n");
 
@@ -1531,7 +1515,42 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
                    ((PMSV1_0_INTERACTIVE_LOGON)ProtocolSubmitBuffer)->MessageType == MsV1_0InteractiveLogon;
 
     /* Parameters validation */
-    if (LogonType == Interactive ||
+    if (SubmitBufferSize >= sizeof(MSV1_0_S4U_LOGON) &&
+        ((PMSV1_0_S4U_LOGON)ProtocolSubmitBuffer)->MessageType == MsV1_0S4ULogon)
+    {
+        PMSV1_0_S4U_LOGON S4uLogonInfo = (PMSV1_0_S4U_LOGON)ProtocolSubmitBuffer;
+
+        if (LogonType != Network && LogonType != Batch)
+            return STATUS_INVALID_PARAMETER;
+
+        if (!NtlmFixupAndValidateUStr(&S4uLogonInfo->UserPrincipalName, ProtocolSubmitBuffer,
+                                      ClientBufferBase, SubmitBufferSize) ||
+            !NtlmFixupAndValidateUStr(&S4uLogonInfo->DomainName, ProtocolSubmitBuffer,
+                                      ClientBufferBase, SubmitBufferSize))
+            return STATUS_INVALID_PARAMETER;
+
+        if ((S4uLogonInfo->DomainName.Length == sizeof(WCHAR) &&
+             S4uLogonInfo->DomainName.Buffer[0] == L'.') ||
+            RtlEqualUnicodeString(&S4uLogonInfo->DomainName, &ComputerName, TRUE))
+            LogonDomain = &ComputerName;
+        else
+            return STATUS_NOT_SUPPORTED;
+
+        if (S4uLogonInfo->UserPrincipalName.Length == 0)
+            return STATUS_LOGON_FAILURE;
+
+        S4ULogon = TRUE;
+        LogonUserName = &S4uLogonInfo->UserPrincipalName;
+        LogonPwdData.IsNetwork = TRUE;
+        LogonPwdData.ComputerName = &ComputerName;
+
+        if ((LsaGetClientInfo != NULL) &&
+            NT_SUCCESS(LsaGetClientInfo(&ClientInfo)))
+            LogonPwdData.TrustedClient = ClientInfo.HasTcbPrivilege;
+
+        TRACE("S4U User: %wZ\n", LogonUserName);
+    }
+    else if (LogonType == Interactive ||
         LogonType == RemoteInteractive ||
         LogonType == Batch ||
         LogonType == Service ||
@@ -1540,7 +1559,6 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
         PlainNetwork)
     {
         PMSV1_0_INTERACTIVE_LOGON LogonInfo;
-        ULONG_PTR PtrOffset;
 
         if (SubmitBufferSize < sizeof(MSV1_0_INTERACTIVE_LOGON))
         {
@@ -1571,31 +1589,12 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
 #endif
 
         /* Fix-up pointers in the authentication info */
-        PtrOffset = (ULONG_PTR)ProtocolSubmitBuffer - (ULONG_PTR)ClientBufferBase;
-
         /* LogonDomainName is optional and can be an empty string */
-        if (LogonInfo->LogonDomainName.Length)
-        {
-            // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-            LogonInfo->LogonDomainName.Buffer = FIXUP_POINTER(LogonInfo->LogonDomainName.Buffer, PtrOffset);
-            LogonInfo->LogonDomainName.MaximumLength = LogonInfo->LogonDomainName.Length;
-        }
-        else
-        {
-            LogonInfo->LogonDomainName.Buffer = NULL;
-            LogonInfo->LogonDomainName.MaximumLength = 0;
-        }
-        Status = RtlValidateUnicodeString(0, &LogonInfo->LogonDomainName);
-        if (!NT_SUCCESS(Status))
+        if (!NtlmFixupAndValidateUStr(&LogonInfo->LogonDomainName, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize))
             return STATUS_INVALID_PARAMETER;
 
         /* UserName is mandatory and cannot be an empty string */
-        // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-        LogonInfo->UserName.Buffer = FIXUP_POINTER(LogonInfo->UserName.Buffer, PtrOffset);
-        LogonInfo->UserName.MaximumLength = LogonInfo->UserName.Length;
-
-        Status = RtlValidateUnicodeString(0, &LogonInfo->UserName);
-        if (!NT_SUCCESS(Status))
+        if (!NtlmFixupAndValidateUStr(&LogonInfo->UserName, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize))
             return STATUS_INVALID_PARAMETER;
 
         /* MS docs says max length is 0xFF bytes. But thats not the full story:
@@ -1610,17 +1609,8 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
         LogonInfo->Password.Length = LogonInfo->Password.Length & 0xFF;
 
         /* Password is optional and can be an empty string */
-        if (LogonInfo->Password.Length)
-        {
-            // TODO: Check for Buffer limits wrt. ClientBufferBase and alignment.
-            LogonInfo->Password.Buffer = FIXUP_POINTER(LogonInfo->Password.Buffer, PtrOffset);
-            LogonInfo->Password.MaximumLength = LogonInfo->Password.Length;
-        }
-        else
-        {
-            LogonInfo->Password.Buffer = NULL;
-            LogonInfo->Password.MaximumLength = 0;
-        }
+        if (!NtlmFixupAndValidateUStr(&LogonInfo->Password, ProtocolSubmitBuffer, ClientBufferBase, SubmitBufferSize))
+            return STATUS_INVALID_PARAMETER;
 
         /* Decode password */
         if (LogonPassHash > 0)
@@ -1678,7 +1668,7 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
     }
     // TODO: Add other LogonType validity checks.
 
-    if (LogonType != Network || PlainNetwork)
+    if (LogonType != Network || PlainNetwork || S4ULogon)
     {
         Status = SamValidateUser(LogonType,
                                  LogonUserName,
@@ -1689,7 +1679,8 @@ LsaApLogonUserEx2(IN PLSA_CLIENT_REQUEST ClientRequest,
                                  &AccountDomainSid,
                                  &UserHandle,
                                  &UserInfo,
-                                 SubStatus);
+                                 SubStatus,
+                                 S4ULogon);
         if (!NT_SUCCESS(Status))
             goto done;
     }
@@ -1917,7 +1908,7 @@ done:
     if (Status == STATUS_NO_SUCH_USER ||
         Status == STATUS_WRONG_PASSWORD)
     {
-        *SubStatus = (LogonType == Network || LogonType == NetworkCleartext || LogonPwdData.TrustedClient) ? Status : STATUS_SUCCESS;
+        *SubStatus = (!S4ULogon && (LogonType == Network || LogonType == NetworkCleartext || LogonPwdData.TrustedClient)) ? Status : STATUS_SUCCESS;
         Status = STATUS_LOGON_FAILURE;
     }
 
