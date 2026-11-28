@@ -1,6 +1,7 @@
 add_subdirectory(makeimg)
 
 list(APPEND SOURCE
+    TouchProximity.c
     AltTabHook.c
     AnimatedCursor.c
     AttachThreadInput.c
@@ -22,6 +23,7 @@ list(APPEND SOURCE
     CursorPresentation.c
     CreateDialog.c
     CreateStructHook.c
+    DesktopCloseWindows.c
     DisplayChangeBroadcast.c
     DisplayChangeDesktops.c
     DisplayChangeMaximized.c

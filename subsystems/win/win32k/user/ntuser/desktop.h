@@ -148,6 +148,11 @@ IntResolveDesktop(
     OUT HWINSTA* phWinSta,
     OUT HDESK* phDesktop);
 
+VOID
+IntSetDesktopHandleProtection(
+    _In_ HDESK hDesktop,
+    _In_ BOOLEAN ProtectFromClose);
+
 NTSTATUS FASTCALL
 IntValidateDesktopHandle(
    HDESK Desktop,
@@ -171,6 +176,7 @@ VOID FASTCALL UserNotifyDesktopDisplayChange(PDESKTOP pdesk);
 VOID FASTCALL UserReleaseBootDisplay(VOID);
 BOOL IntRegisterShellHookWindow(HWND hWnd);
 BOOL IntDeRegisterShellHookWindow(HWND hWnd);
+VOID FASTCALL co_UserEndDesktopThread(PTHREADINFO pti);
 VOID co_IntShellHookNotify(WPARAM Message, WPARAM wParam, LPARAM lParam);
 BOOL co_IntGetShellMinRect(HWND hWnd, RECTL *prc);
 HDC FASTCALL UserGetDesktopDC(ULONG,BOOL,BOOL);
@@ -344,6 +350,7 @@ BOOL FASTCALL IntPaintDesktop(HDC);
 BOOL FASTCALL DesktopWindowProc(PWND, UINT, WPARAM, LPARAM, LRESULT *);
 BOOL FASTCALL UserMessageWindowProc(PWND pwnd, UINT Msg, WPARAM wParam, LPARAM lParam, LRESULT *lResult);
 VOID NTAPI DesktopThreadMain(VOID);
+VOID FASTCALL IntReleaseInputDesktop(VOID);
 HDESK UserOpenInputDesktop(DWORD dwFlags, BOOL fInherit, ACCESS_MASK dwDesiredAccess);
 
 /* EOF */

@@ -2,6 +2,7 @@
 #define STANDALONE
 #include <apitest.h>
 
+extern void func_TouchProximity(void);
 extern void func_RegisterTouchWindow(void);
 extern void func_AltTabHook(void);
 extern void func_AnimatedCursor(void);
@@ -19,6 +20,7 @@ extern void func_CopyImage_Icon(void);
 extern void func_CursorPresentation(void);
 extern void func_CreateDialog(void);
 extern void func_CreateStructHook(void);
+extern void func_DesktopCloseWindows(void);
 extern void func_DisplayChangeBroadcast(void);
 extern void func_DisplayChangeDesktops(void);
 extern void func_DisplayChangeMaximized(void);
@@ -183,6 +185,7 @@ extern void func_wsprintfApi(void);
 
 const struct test winetest_testlist[] =
 {
+    { "TouchProximity", func_TouchProximity },
     { "RegisterTouchWindow", func_RegisterTouchWindow },
     { "AltTabHook", func_AltTabHook },
     { "AnimatedCursor", func_AnimatedCursor },
@@ -200,6 +203,7 @@ const struct test winetest_testlist[] =
     { "CursorPresentation", func_CursorPresentation },
     { "CreateDialog", func_CreateDialog },
     { "CreateStructHook", func_CreateStructHook },
+    { "DesktopCloseWindows", func_DesktopCloseWindows },
     { "DisplayChangeBroadcast", func_DisplayChangeBroadcast },
     { "DisplayChangeDesktops", func_DisplayChangeDesktops },
     { "DisplayChangeMaximized", func_DisplayChangeMaximized },

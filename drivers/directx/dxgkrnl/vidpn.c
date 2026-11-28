@@ -2875,8 +2875,8 @@ DxgkpHotPlugRebuildWorker(
     PAGED_CODE();
     for (;;)
     {
-        if (InterlockedExchange(&Adapter->ConnectorChangePending, 0) != 0 &&
-            Adapter->State == DxgkAdapterStateStarted)
+        if (DxgkHotPlugWorkCoreTakeConnectorChange(&Adapter->ConnectorChangePending,
+                                                   Adapter->State == DxgkAdapterStateStarted))
         {
             DxgkpDrainConnectionChanges(Adapter);
         }
@@ -3963,12 +3963,12 @@ DxgkpVidPnRebuildForHotPlugGeneration(
     KeReleaseMutex(&Adapter->VidPnMutex, FALSE);
     DxgkpDisplayPublishInitialMode(Adapter, FALSE);
     DxgkVidPnDestroyDisplayModeCache(Adapter);
-    /* Windows keeps the desktop mode while the adapter has no output left, and reports a monitor once */
-    NotifyMonitorEvent = CommitResult.VidPnCommitted &&
-                         (MonitorArrived ||
-                          (CommitResult.CommittedWidth != 0 && CommitResult.CommittedHeight != 0 &&
-                           (PathsChanged ||
-                            CommitResult.CommittedWidth != OldCommittedWidth || CommitResult.CommittedHeight != OldCommittedHeight)));
+    NotifyMonitorEvent = DxgkHotPlugWorkCoreNotifiesDisplayChange(
+                             CommitResult.VidPnCommitted,
+                             MonitorArrived,
+                             CommitResult.CommittedWidth != 0 && CommitResult.CommittedHeight != 0,
+                             PathsChanged,
+                             CommitResult.CommittedWidth != OldCommittedWidth || CommitResult.CommittedHeight != OldCommittedHeight);
     if (CommitResult.CommittedWidth != OldCommittedWidth || CommitResult.CommittedHeight != OldCommittedHeight ||
         (!Snapshot->Connected && !CommitResult.HeadlessDesktop))
         DxgkpDestroySharedPrimaryLocked(Adapter);

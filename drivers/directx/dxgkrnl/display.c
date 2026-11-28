@@ -43,6 +43,8 @@
 #include "d3dkmt.h"
 #include <ntddvdeo.h>
 #include <ndk/inbvfuncs.h>
+#include <ndk/psfuncs.h>
+#include <devpkey.h>
 #include <ntstrsafe.h>
 /* IOCTL_VIDEO_DXGK_* present-path contract, shared with cdd/win32k. */
 #include <libernt/dwmframe.h>
@@ -82,6 +84,9 @@ typedef struct _DXGKP_DISPLAY_BRIDGE
     BOOLEAN                     InitialModePending;
     PVOID                       Win32kPhysDisp;
     PVIDEO_WIN32K_CALLOUT       Win32kCallout;
+    ULONG                       Win32kSessionId;
+    ULONG64                     Win32kGeneration;
+    ULONG                       UseSessionId;
     KSPIN_LOCK                  DetachLock;
     PVOID                       DetachedFb;
     ULONG                       DetachedFbSize;
@@ -188,7 +193,18 @@ DxgkpSelectDisplayDriver(
     return L"cdd";
 }
 
-static PEPROCESS g_DisplayWin32kProcess;
+typedef struct _DXGKP_WIN32K_SESSION
+{
+    LIST_ENTRY Entry;
+    ULONG SessionId;
+    ULONG64 Generation;
+    PEPROCESS Process;
+    EX_RUNDOWN_REF Rundown;
+} DXGKP_WIN32K_SESSION, *PDXGKP_WIN32K_SESSION;
+
+static ULONG64 g_DisplayWin32kGeneration;
+
+static LIST_ENTRY g_DisplayWin32kSessions = { &g_DisplayWin32kSessions, &g_DisplayWin32kSessions };
 static KSPIN_LOCK g_DisplayWin32kProcessLock;
 static volatile LONG g_PresentShadowTraceCount = 0;
 static volatile LONG g_PresentDirtyTraceCount = 0;
@@ -330,46 +346,306 @@ DxgkpDisplayPublishInitialMode(
     ExReleaseRundownProtection(&Bridge->Rundown);
 }
 
-BOOLEAN
-DxgkDisplayAttachWin32kSession(
-    _Out_ PRKAPC_STATE ApcState,
-    _Out_ PEPROCESS *AttachedProcess)
+static
+PDXGKP_WIN32K_SESSION
+DxgkpFindWin32kSession(
+    _In_ ULONG SessionId)
 {
-    PEPROCESS Process;
+    PLIST_ENTRY Entry;
+
+    ASSERT(KeGetCurrentIrql() == DISPATCH_LEVEL);
+    for (Entry = g_DisplayWin32kSessions.Flink; Entry != &g_DisplayWin32kSessions; Entry = Entry->Flink)
+    {
+        PDXGKP_WIN32K_SESSION Session = CONTAINING_RECORD(Entry, DXGKP_WIN32K_SESSION, Entry);
+
+        if (Session->SessionId == SessionId)
+            return Session;
+    }
+    return NULL;
+}
+
+/* Session 0 draws on the adapters of the console without taking their callouts from it */
+static
+NTSTATUS
+DxgkpBindWin32kSession(
+    _Inout_ PDXGKP_DISPLAY_BRIDGE Bridge,
+    _In_ PEPROCESS Process,
+    _In_ PVIDEO_WIN32K_CALLBACKS Callbacks)
+{
+    PDXGKP_WIN32K_SESSION Session, Bound, NewSession;
+    PEPROCESS Previous = NULL;
+    ULONG SessionId = PsGetProcessSessionId(Process);
+    NTSTATUS Status = STATUS_SUCCESS;
+    BOOLEAN Shared = FALSE;
+    KIRQL OldIrql;
+
+    PAGED_CODE();
+    ASSERT(Callbacks->Callout != NULL);
+
+    NewSession = ExAllocatePoolZero(NonPagedPool, sizeof(*NewSession), TAG_DXGK_DISPLAY);
+    if (NewSession == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    ObReferenceObject(Process);
+    NewSession->SessionId = SessionId;
+    NewSession->Process = Process;
+    ExInitializeRundownProtection(&NewSession->Rundown);
+
+    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
+    if (SessionId == 0 && Bridge->Win32kCallout != NULL && Bridge->Win32kSessionId != 0)
+    {
+        Bound = DxgkpFindWin32kSession(Bridge->Win32kSessionId);
+        Shared = Bound != NULL && PsGetProcessExitStatus(Bound->Process) == STATUS_PENDING;
+    }
+    if (NT_SUCCESS(Status) && !Shared)
+    {
+        Session = DxgkpFindWin32kSession(SessionId);
+        if (Session != NULL)
+        {
+            Previous = Session->Process;
+            Session->Process = Process;
+            NewSession->Process = NULL;
+        }
+        else
+        {
+            NewSession->Generation = ++g_DisplayWin32kGeneration;
+            InsertTailList(&g_DisplayWin32kSessions, &NewSession->Entry);
+            Session = NewSession;
+            NewSession = NULL;
+        }
+        Bridge->Win32kPhysDisp = Callbacks->PhysDisp;
+        Bridge->Win32kSessionId = SessionId;
+        Bridge->Win32kGeneration = Session->Generation;
+        InterlockedExchangePointer((PVOID *)&Bridge->Win32kCallout, (PVOID)Callbacks->Callout);
+    }
+    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
+
+    if (NewSession != NULL)
+    {
+        if (NewSession->Process != NULL)
+            ObDereferenceObject(NewSession->Process);
+        ExFreePoolWithTag(NewSession, TAG_DXGK_DISPLAY);
+    }
+    if (Previous != NULL)
+        ObDereferenceObject(Previous);
+    return Status;
+}
+
+/* A remote display adapter serves the session its instance names, or the next session started off the console (NewSession or NewSession_N); any other adapter serves the console */
+static
+BOOLEAN
+DxgkpSessionMayUseAdapter(
+    _In_ PDXGKRNL_ADAPTER Adapter,
+    _In_ ULONG SessionId,
+    _Out_ PBOOLEAN ForNewSession)
+{
+    static const WCHAR Remote[] = L"\\RdpVdd_RemoteDisplay&";
+    static const WCHAR SessionPrefix[] = L"SessionId_";
+    static const WCHAR NewSession[] = L"NewSession";
+    ULONG Console = ReadULongAcquire(&SharedUserData->ActiveConsoleId);
+    ULONG Required = 0, Length, Index, Owner;
+    PWSTR InstanceId = NULL;
+    PCWSTR Tail = NULL;
+    UNICODE_STRING Number;
+    DEVPROPTYPE Type;
+    BOOLEAN May;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+    ASSERT(SessionId != 0);
+
+    *ForNewSession = FALSE;
+    if (Adapter->PhysicalDeviceObject == NULL)
+        return Console == 0 || Console == SessionId;
+    Status = IoGetDevicePropertyData(Adapter->PhysicalDeviceObject, &DEVPKEY_Device_InstanceId, LOCALE_NEUTRAL, 0, 0,
+                                     NULL, &Required, &Type);
+    if (Status == STATUS_BUFFER_TOO_SMALL && Required >= sizeof(WCHAR))
+    {
+        InstanceId = ExAllocatePoolZero(PagedPool, Required + sizeof(WCHAR), TAG_DXGK_DISPLAY);
+        Status = InstanceId != NULL ?
+            IoGetDevicePropertyData(Adapter->PhysicalDeviceObject, &DEVPKEY_Device_InstanceId, LOCALE_NEUTRAL, 0,
+                                    Required, InstanceId, &Required, &Type) :
+            STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if (!NT_SUCCESS(Status) || Type != DEVPROP_TYPE_STRING)
+    {
+        if (InstanceId != NULL)
+            ExFreePoolWithTag(InstanceId, TAG_DXGK_DISPLAY);
+        return Console == 0 || Console == SessionId;
+    }
+
+    Length = (ULONG)wcslen(InstanceId);
+    for (Index = 0; Index + RTL_NUMBER_OF(Remote) - 1 <= Length; Index++)
+    {
+        if (_wcsnicmp(&InstanceId[Index], Remote, RTL_NUMBER_OF(Remote) - 1) == 0)
+        {
+            Tail = &InstanceId[Index + RTL_NUMBER_OF(Remote) - 1];
+            break;
+        }
+    }
+    if (Tail == NULL)
+        May = Console == 0 || Console == SessionId;
+    else if (_wcsnicmp(Tail, NewSession, RTL_NUMBER_OF(NewSession) - 1) == 0 &&
+             (Tail[RTL_NUMBER_OF(NewSession) - 1] == UNICODE_NULL || Tail[RTL_NUMBER_OF(NewSession) - 1] == L'_'))
+    {
+        *ForNewSession = TRUE;
+        May = Console != 0 && Console != SessionId;
+    }
+    else if (_wcsnicmp(Tail, SessionPrefix, RTL_NUMBER_OF(SessionPrefix) - 1) != 0)
+        May = FALSE;
+    else
+    {
+        RtlInitUnicodeString(&Number, Tail + RTL_NUMBER_OF(SessionPrefix) - 1);
+        May = NT_SUCCESS(RtlUnicodeStringToInteger(&Number, 10, &Owner)) && Owner == SessionId;
+    }
+    ExFreePoolWithTag(InstanceId, TAG_DXGK_DISPLAY);
+    return May;
+}
+
+static
+NTSTATUS
+DxgkpUseAdapterInSession(
+    _Inout_ PDXGKP_DISPLAY_BRIDGE Bridge,
+    _In_ PDXGKRNL_ADAPTER Adapter,
+    _Inout_ PVIDEO_DEVICE_SESSION_STATUS SessionStatus)
+{
+    PDXGKP_WIN32K_SESSION Owner;
+    ULONG SessionId = PsGetCurrentProcessSessionId();
+    BOOLEAN May, ForNewSession;
     KIRQL OldIrql;
 
     PAGED_CODE();
 
-    *AttachedProcess = NULL;
-    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
-    Process = g_DisplayWin32kProcess;
-    if (Process != NULL)
-        ObReferenceObject(Process);
-    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
-    if (Process == NULL)
-        return FALSE;
-    if (Process == PsGetCurrentProcess())
+    SessionStatus->bSuccess = FALSE;
+    if (!SessionStatus->bEnable)
     {
-        ObDereferenceObject(Process);
-        return TRUE;
+        KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
+        if (Bridge->UseSessionId == SessionId)
+        {
+            Bridge->UseSessionId = MAXULONG;
+            SessionStatus->bSuccess = TRUE;
+        }
+        KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
+        return STATUS_SUCCESS;
     }
-    KeStackAttachProcess((PRKPROCESS)Process, ApcState);
-    *AttachedProcess = Process;
+
+    if (SessionId == 0)
+        return STATUS_SUCCESS;
+    May = DxgkpSessionMayUseAdapter(Adapter, SessionId, &ForNewSession);
+
+    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
+    if (May && ForNewSession && Bridge->UseSessionId != SessionId && DxgkpFindWin32kSession(SessionId) != NULL)
+        May = FALSE;
+    if (May && Bridge->UseSessionId != MAXULONG && Bridge->UseSessionId != SessionId)
+    {
+        Owner = DxgkpFindWin32kSession(Bridge->UseSessionId);
+        if (Owner != NULL && PsGetProcessExitStatus(Owner->Process) == STATUS_PENDING)
+            May = FALSE;
+    }
+    if (May)
+        Bridge->UseSessionId = SessionId;
+    SessionStatus->bSuccess = May;
+    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
+    return STATUS_SUCCESS;
+}
+
+VOID
+DxgkDisplayWin32kProcessCleanup(
+    _In_ PEPROCESS Process)
+{
+    PDXGKP_WIN32K_SESSION Session, Found = NULL;
+    PLIST_ENTRY Entry;
+    KIRQL OldIrql;
+
+    PAGED_CODE();
+
+    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
+    for (Entry = g_DisplayWin32kSessions.Flink; Entry != &g_DisplayWin32kSessions; Entry = Entry->Flink)
+    {
+        Session = CONTAINING_RECORD(Entry, DXGKP_WIN32K_SESSION, Entry);
+        if (Session->Process == Process)
+        {
+            RemoveEntryList(&Session->Entry);
+            Found = Session;
+            break;
+        }
+    }
+    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
+
+    if (Found == NULL)
+        return;
+    ASSERT(Found->SessionId == PsGetProcessSessionId(Process));
+    ExWaitForRundownProtectionRelease(&Found->Rundown);
+    ObDereferenceObject(Found->Process);
+    ExFreePoolWithTag(Found, TAG_DXGK_DISPLAY);
+}
+
+static
+BOOLEAN
+DxgkpAttachWin32kSessionLocked(
+    _In_ PDXGKP_WIN32K_SESSION Session,
+    _Out_ PDXGK_WIN32K_ATTACHMENT Attachment)
+{
+    ASSERT(KeGetCurrentIrql() == DISPATCH_LEVEL);
+    if (!ExAcquireRundownProtection(&Session->Rundown))
+        return FALSE;
+    Attachment->Process = Session->Process;
+    Attachment->Binding = Session;
+    ObReferenceObject(Attachment->Process);
+    return TRUE;
+}
+
+static
+VOID
+DxgkpEnterWin32kSession(
+    _Inout_ PDXGK_WIN32K_ATTACHMENT Attachment)
+{
+    ASSERT(Attachment->Process != NULL && Attachment->Binding != NULL);
+    if (Attachment->Process == PsGetCurrentProcess())
+        return;
+    KeStackAttachProcess((PRKPROCESS)Attachment->Process, &Attachment->ApcState);
+    Attachment->Attached = TRUE;
+}
+
+BOOLEAN
+DxgkDisplayAttachWin32kSession(
+    _In_ ULONG SessionId,
+    _Out_ PDXGK_WIN32K_ATTACHMENT Attachment)
+{
+    PDXGKP_WIN32K_SESSION Session;
+    BOOLEAN Found = FALSE;
+    KIRQL OldIrql;
+
+    PAGED_CODE();
+
+    RtlZeroMemory(Attachment, sizeof(*Attachment));
+    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
+    Session = DxgkpFindWin32kSession(SessionId);
+    if (Session != NULL)
+        Found = DxgkpAttachWin32kSessionLocked(Session, Attachment);
+    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
+    if (!Found)
+        return FALSE;
+    ASSERT(PsGetProcessSessionId(Attachment->Process) == SessionId);
+    DxgkpEnterWin32kSession(Attachment);
     return TRUE;
 }
 
 VOID
 DxgkDisplayDetachWin32kSession(
-    _In_ PRKAPC_STATE ApcState,
-    _In_opt_ PEPROCESS AttachedProcess)
+    _Inout_ PDXGK_WIN32K_ATTACHMENT Attachment)
 {
     PAGED_CODE();
 
-    if (AttachedProcess == NULL)
+    if (Attachment->Binding == NULL)
         return;
-    ASSERT(PsGetCurrentProcess() == AttachedProcess);
-    KeUnstackDetachProcess(ApcState);
-    ObDereferenceObject(AttachedProcess);
+    if (Attachment->Attached)
+    {
+        ASSERT(PsGetCurrentProcess() == Attachment->Process);
+        KeUnstackDetachProcess(&Attachment->ApcState);
+    }
+    ObDereferenceObject(Attachment->Process);
+    ExReleaseRundownProtection(&((PDXGKP_WIN32K_SESSION)Attachment->Binding)->Rundown);
+    RtlZeroMemory(Attachment, sizeof(*Attachment));
 }
 
 static VOID
@@ -377,25 +653,31 @@ DxgkpDisplayRefreshWin32k(
     _In_ PDXGKP_DISPLAY_BRIDGE Bridge)
 {
     VIDEO_WIN32K_CALLBACKS_PARAMS Params;
+    DXGK_WIN32K_ATTACHMENT Attachment;
+    PDXGKP_WIN32K_SESSION Session;
     PVIDEO_WIN32K_CALLOUT Callout;
-    KAPC_STATE ApcState;
-    PEPROCESS Process;
+    BOOLEAN Found = FALSE;
+    KIRQL OldIrql;
 
     PAGED_CODE();
 
-    Callout = (PVIDEO_WIN32K_CALLOUT)InterlockedCompareExchangePointer((PVOID *)&Bridge->Win32kCallout, NULL, NULL);
-    if (Callout == NULL)
-        return;
     RtlZeroMemory(&Params, sizeof(Params));
+    RtlZeroMemory(&Attachment, sizeof(Attachment));
     Params.CalloutType = VideoDxgkMonitorEventCallout;
-    Params.PhysDisp = Bridge->Win32kPhysDisp;
-    if (!DxgkDisplayAttachWin32kSession(&ApcState, &Process))
+    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
+    Callout = Bridge->Win32kCallout;
+    Session = Callout != NULL ? DxgkpFindWin32kSession(Bridge->Win32kSessionId) : NULL;
+    if (Session != NULL && Session->Generation == Bridge->Win32kGeneration)
     {
-        ASSERT(FALSE);
-        return;
+        Params.PhysDisp = Bridge->Win32kPhysDisp;
+        Found = DxgkpAttachWin32kSessionLocked(Session, &Attachment);
     }
+    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
+    if (!Found)
+        return;
+    DxgkpEnterWin32kSession(&Attachment);
     Callout(&Params);
-    DxgkDisplayDetachWin32kSession(&ApcState, Process);
+    DxgkDisplayDetachWin32kSession(&Attachment);
 }
 
 VOID
@@ -817,18 +1099,8 @@ DxgkpPinSupportedPathTransformations(
         }
 
         if (!DxgkpVidPnPathRotationIsPinned(Path))
-        {
-            if (Path->ContentTransformation.RotationSupport.Identity)
-                Path->ContentTransformation.Rotation = D3DKMDT_VPPR_IDENTITY;
-            else if (Path->ContentTransformation.RotationSupport.Rotate90)
-                Path->ContentTransformation.Rotation = D3DKMDT_VPPR_ROTATE90;
-            else if (Path->ContentTransformation.RotationSupport.Rotate180)
-                Path->ContentTransformation.Rotation = D3DKMDT_VPPR_ROTATE180;
-            else if (Path->ContentTransformation.RotationSupport.Rotate270)
-                Path->ContentTransformation.Rotation = D3DKMDT_VPPR_ROTATE270;
-            else
-                return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
-        }
+            Path->ContentTransformation.Rotation = DxgkVidPnCoreSelectRotation(Path->ContentTransformation.RotationSupport);
+        ASSERT(DxgkpVidPnPathRotationIsPinned(Path));
 
     }
 
@@ -4718,28 +4990,39 @@ DxgkpDisplayDispatch(
 
                 Callbacks->bACPI = FALSE;
                 Callbacks->DualviewFlags = 0;
-                if (Irp->RequestorMode == KernelMode && Callbacks->Callout != NULL)
-                {
-                    PEPROCESS Process = IoGetCurrentProcess();
-                    PEPROCESS Previous;
-                    KIRQL OldIrql;
-
-                    ObReferenceObject(Process);
-                    KeAcquireSpinLock(&g_DisplayWin32kProcessLock, &OldIrql);
-                    Bridge->Win32kPhysDisp = Callbacks->PhysDisp;
-                    Previous = g_DisplayWin32kProcess;
-                    g_DisplayWin32kProcess = Process;
-                    InterlockedExchangePointer((PVOID *)&Bridge->Win32kCallout, (PVOID)Callbacks->Callout);
-                    KeReleaseSpinLock(&g_DisplayWin32kProcessLock, OldIrql);
-                    if (Previous != NULL)
-                        ObDereferenceObject(Previous);
-                }
-                BytesReturned = sizeof(VIDEO_WIN32K_CALLBACKS);
                 Status = STATUS_SUCCESS;
+                if (Irp->RequestorMode == KernelMode && Callbacks->Callout != NULL)
+                    Status = DxgkpBindWin32kSession(Bridge, IoGetCurrentProcess(), Callbacks);
+                if (NT_SUCCESS(Status))
+                    BytesReturned = sizeof(VIDEO_WIN32K_CALLBACKS);
             }
             else
             {
                 Status = STATUS_BUFFER_TOO_SMALL;
+            }
+            break;
+        }
+
+        case IOCTL_VIDEO_USE_DEVICE_IN_SESSION:
+        {
+            PVIDEO_DEVICE_SESSION_STATUS SessionStatus =
+                (PVIDEO_DEVICE_SESSION_STATUS)Irp->AssociatedIrp.SystemBuffer;
+
+            if (Irp->RequestorMode != KernelMode)
+            {
+                Status = STATUS_ACCESS_DENIED;
+            }
+            else if (SessionStatus == NULL || Adapter == NULL ||
+                     Stack->Parameters.DeviceIoControl.InputBufferLength < sizeof(VIDEO_DEVICE_SESSION_STATUS) ||
+                     Stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(VIDEO_DEVICE_SESSION_STATUS))
+            {
+                Status = STATUS_BUFFER_TOO_SMALL;
+            }
+            else
+            {
+                Status = DxgkpUseAdapterInSession(Bridge, Adapter, SessionStatus);
+                if (NT_SUCCESS(Status))
+                    BytesReturned = sizeof(VIDEO_DEVICE_SESSION_STATUS);
             }
             break;
         }
@@ -6689,6 +6972,7 @@ DxgkDisplayRegister(
     }
 
     InterlockedExchangePointer((PVOID *)&Bridge->Adapter, Adapter);
+    Bridge->UseSessionId = MAXULONG;
     Bridge->InitialModePending = TRUE;
     (VOID)RtlStringCchCopyW(Adapter->DisplayDeviceName, RTL_NUMBER_OF(Adapter->DisplayDeviceName), DeviceBuffer);
 
