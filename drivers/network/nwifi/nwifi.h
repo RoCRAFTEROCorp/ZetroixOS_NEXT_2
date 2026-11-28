@@ -78,6 +78,7 @@ typedef struct _NWIFI_ADAPTER
 {
     LIST_ENTRY    Link;
     ULONG         InterfaceIndex;
+    EX_RUNDOWN_REF Rundown;
 
     NDIS_HANDLE   FilterHandle;
     BOOLEAN       LowerPrepared;
@@ -218,7 +219,8 @@ VOID  NwifiFree(_In_ PVOID Buffer);
 
 /* Find an attached adapter by its nwifi-local interface index.  Returns NULL if no
  * such interface is bound.  Caller must hold no locks; runs at <= DISPATCH. */
-PNWIFI_ADAPTER NwifiFindAdapterByIndex(_In_ ULONG InterfaceIndex);
+PNWIFI_ADAPTER NwifiReferenceAdapterByIndex(_In_ ULONG InterfaceIndex);
+VOID NwifiDereferenceAdapter(_In_ PNWIFI_ADAPTER Adapter);
 
 /* --- control.c : \Device\Nwifi control device + IOCTL dispatch ------------- */
 NDIS_STATUS NwifiCreateControlDevice(VOID);
